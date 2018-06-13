@@ -273,7 +273,7 @@ BOOL dataLinkDB(PCHAR szIndex, MQ2TYPEVAR &Ret)
    if (bReturnFilled)
       NEXT_RESULT_POSITION(g_iLastResultPosition); 
 
-   Ret.Type = pStringType; 
+   Ret.Type = pStringType;
    return true;
 } 
 
@@ -526,17 +526,21 @@ static void StoreLink (const char * cLink)
 static char * LinkExtract (char * cLink) 
 { 
 	if (char * cTemp = _strdup(cLink)) {
-		char * cEnd = strchr(cTemp + START_LINKTEXT, '\x12');
+		int stlen = strlen(cTemp);
 		int iLen = 1;
+		if (stlen > START_LINKTEXT)
+		{
+			char * cEnd = strchr(cTemp + START_LINKTEXT, '\x12');
 
-		if (cEnd != NULL) {
-			*(cEnd + 1) = '\0';
-			iLen = strlen(cTemp);
+			if (cEnd != NULL) {
+				*(cEnd + 1) = '\0';
+				iLen = strlen(cTemp);
 
-			//WriteChatf ("MQ2LinkDB: Chat - %s", cTemp + 1); 
+				//WriteChatf ("MQ2LinkDB: Chat - %s", cTemp + 1); 
 
-			if (!FindLink(cTemp)) {
-				StoreLink(cTemp);
+				if (!FindLink(cTemp)) {
+					StoreLink(cTemp);
+				}
 			}
 		}
 		free(cTemp);
