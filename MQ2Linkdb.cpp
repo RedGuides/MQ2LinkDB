@@ -1,17 +1,16 @@
 // MQ2LinkDB 
 // 
-// Version 2.2 - 16th Aug 2007 - Originally by Ziggy, 
-//  then updated for DoD, PoR, SS, BS, modifications by rswiders
-//  updated for CoF
+// Version 2.3 - 07 Feb 2014 - Originally by Ziggy, 
+//  then updated for DoD, PoR, SS, BS, modifications by SwiftyMUSE
+//  updated for CotF
 //
-//  Currently linkbot functions are not working.
+// Currently linkbot functions are not working.
 // 
 // Personal link database 
 // 
 // Usage: /link               - Display statistics 
-//        /link /import       - Import items.txt as downloaded from 13th Floor 
-//                              (Unzip the items.txt file to the mq2\release 
-//                              directory) 
+//        /link /import       - Import a items.txt file from 
+//								items.sodeq.org into an updated MQ2LinkDB.txt file.
 //        /link /max n        - Set number of maximum displayed results 
 //                              (default 10) 
 //        /link /scan on|off  - Turn on and off scanning incoming chat 
@@ -53,19 +52,20 @@
 //
 //
 // Changes: 
-// 2.3 - Eqmule 07-22-2016 - Added string safety.
-// 2.2  Updated for CoF release. Linkbot ability is not working
+// 3.2 - Eqmule Jan 08 2020 - Updated to not require an item on cursor to do /link /import and to not poof the item used as the template.
+// 3.1  Updated for new link format on BETA, 11/9/18.
+// 3.0 - Eqmule 07-22-2016 - Added string safety.
+// 2.4  Updated to include new sodeq db dump format as the input based on old
+//		13th-floor database.
+// 2.3  Fixed exact search link clicking. Replaced entire import function to use
+//      a dump from Lucy. 13th-floor is no longer updating their file so it is of no
+//      real use to us anymore. I will keep an updated MQ2LinkDB.txt file on the MQ2
+//      site for everyones use. The file will be updated on a monthly basis, at best.
+// 2.2  Updated for CotF release. Linkbot ability is not working
 // 2.1  Updated to fix charm links.  Added all the new fields as defined on 13-floor and
 //      corrected a long standing issue with an escaped delimiter in the names of 3 items.
 //      You NO LONGER have to remove the left and right hand entries, they are created
 //      as links correctly.
-// 2.0  This version, with linkbot ability, must remain in the VIP forums.
-//		Added linkbot functionality using an authorization list.  Will automatically
-//		click an exact match link.  Added the ability to retrieve a link based on
-//		the item id using /item #.
-//
-//		Linkbot called with tells using the !link command.  It will respond to the
-//		caller with the list of links as if you entered a /link command directly.
 // 1.7  Added simple TLO for accessing links from item names. 
 // 1.6  Updated for Broken Seas item format changes. Thanks to ksmith and 
 //      Nilwean at EQItems. See 
@@ -115,8 +115,8 @@
 #include "../MQ2Plugin.h" 
 
 PreSetup("MQ2LinkDB"); 
-PLUGIN_VERSION(2.3); 
-#define MY_STRING    "MQ2LinkDB \ar2.3\ax by Ziggy, modifications by rswiders, updated for CoF" 
+PLUGIN_VERSION(3.2); 
+#define MY_STRING    "MQ2LinkDB \ar3.1\ax by Ziggy, modifications by SwiftyMUSE" 
 #ifdef ISXEQ
 #define ISINDEX() (argc>0)
 #define ISNUMBER() (IsNumber(argv[0]))
@@ -129,6 +129,8 @@ PLUGIN_VERSION(2.3);
 #define GETFIRST() szIndex
 #endif
 
+#pragma warning( disable:4800 ) // warning C4800: 'long': forcing value to bool 'true' or 'false' (performance warning)
+
 template <unsigned int _Size>int SearchLinkDB(char** ppOutputArray, CHAR(&searchText)[_Size], BOOL bExact);
 
 // Keep the last 10 results we've done and then cycle through. 
@@ -138,10 +140,11 @@ template <unsigned int _Size>int SearchLinkDB(char** ppOutputArray, CHAR(&search
 
 #define LAST_RESULT_CACHE_SIZE 10 
 #define NEXT_RESULT_POSITION(x) (x = ((x)+1) % LAST_RESULT_CACHE_SIZE) 
-static char g_tloLastResult[LAST_RESULT_CACHE_SIZE][MAX_STRING]; 
+static char g_tloLastResult[LAST_RESULT_CACHE_SIZE][256]; 
 static int g_iLastResultPosition = 0; 
 
-static int ConvertItemsDotTxt (void); 
+static VOID ConvertItemsDotTxt(void);
+static VOID ConvertLucydownloadDotTxt(void);
 
 static bool bReplyMode = false;
 static bool bQuietMode = true;               // Display debug chatter? 
@@ -150,19 +153,26 @@ static int iTotalInDB = 0;                   // Number of links in db
 static bool bKnowTotal = false;              // Do we know how many links in db? 
 static int iMaxResults = 10;                 // Display at most this many results 
 static int iFindItemID = 0;					 // Item ID to /link
+static int iVerifyCount;					 // Starting line # to generate 100 links for verification
 static bool bScanChat = true;                // Scan incoming chat for links 
 static bool bClickLinks = false;			 // click on link generated?
 
-#define START_LINKTEXT 0x33					 // starting position of link text
-#define MAX_PRESENT 150000 
+#if !defined(ROF2EMU) && !defined(UFEMU)
+#define START_LINKTEXT (0x5A + 2)			 // starting position of link text found in MQ2Web__ParseItemLink_x
+#else
+#define START_LINKTEXT (0x37 + 2)
+#endif
+#define MAX_PRESENT 180000 
 static unsigned char * abPresent = NULL;     // Bitfield to say yes/no we have/don't have each item id 
 
 #define MAX_INTERNAL_RESULTS  500            // Max size of our sort array 
 #define SORTEM 
 
-static char cLink[256] = {0};
+static char cLink[MAX_STRING/4] = { 0 };
 static int iCurrentID = 0;
 static int iNextID = 0;
+
+char cLinkDBFileName[MAX_PATH] = { 0 };
 
 class MQ2LinkType *pLinkType = 0; 
 
@@ -195,7 +205,7 @@ public:
       { 
       case Link: 
          strcpy_s(DataTypeTemp,cLink); 
-         Dest.Ptr=DataTypeTemp; 
+         Dest.Ptr=&DataTypeTemp[0]; 
          Dest.Type=pStringType; 
          return true; 
       case CurrentID: 
@@ -226,6 +236,22 @@ public:
    } 
 }; 
 
+template <unsigned int _Size>static int strcnt(CHAR(&_Buffer)[_Size], CHAR cChar)
+{
+	CHAR szString[MAX_STRING * 2] = { 0 };
+	int ret = 0;
+	int i = 0;
+
+	strcpy_s(szString, _Buffer);
+	while (szString[i])
+	{
+		if (szString[i] == cChar)
+			ret++;
+		i++;
+	}
+	return ret;
+}
+
 BOOL dataLinkDB(PCHAR szIndex, MQ2TYPEVAR &Ret) 
 { 
    if (!ISINDEX())
@@ -244,13 +270,13 @@ BOOL dataLinkDB(PCHAR szIndex, MQ2TYPEVAR &Ret)
       bExact = true; 
       pItemName++; 
    } 
-   CHAR szCmd[MAX_STRING] = { 0 };
-   strcpy_s(szCmd, pItemName);
+   CHAR szItemName[MAX_STRING] = { 0 };
+   strcpy_s(szItemName, pItemName);
 
    char** ppMatches = new char*[MAX_INTERNAL_RESULTS]; 
    memset (ppMatches, 0, sizeof(char *) *MAX_INTERNAL_RESULTS); 
 
-   int iFound = SearchLinkDB(ppMatches, szCmd, bExact); 
+   int iFound = SearchLinkDB(ppMatches, szItemName, bExact); 
    BOOL bReturnFilled = false; 
 
    for (int i = 0; i < iFound; i++) 
@@ -268,29 +294,28 @@ BOOL dataLinkDB(PCHAR szIndex, MQ2TYPEVAR &Ret)
    delete (ppMatches); 
 
    if (!bReturnFilled)
-	   g_tloLastResult[g_iLastResultPosition][0] = '\0';
+      strcpy_s(g_tloLastResult[g_iLastResultPosition], "\0");
    Ret.Ptr = g_tloLastResult[g_iLastResultPosition]; 
    if (bReturnFilled)
       NEXT_RESULT_POSITION(g_iLastResultPosition); 
 
-   Ret.Type = pStringType;
+   Ret.Type = pStringType; 
    return true;
 } 
+
+static int VerifyLinks (void);
 
 // 
 // static void SaveSettings (void) 
 // 
 static void SaveSettings (void) 
 { 
-   char cFilename[MAX_PATH]; 
-   sprintf_s(cFilename,"%s\\MQ2LinkDB.ini", gszINIPath); 
-
-   char cNumber[16] = { 0 };
+   char cNumber[16] = { 0 }; 
    _itoa_s(iMaxResults, cNumber, 10); 
 
-   WritePrivateProfileString("Settings", "MaxResults", cNumber, cFilename); 
-   WritePrivateProfileString("Settings", "ScanChat", bScanChat ? "1" : "0", cFilename); 
-   WritePrivateProfileString("Settings", "ClickLinks", bClickLinks ? "1" : "0", cFilename); 
+   WritePrivateProfileString("Settings", "MaxResults", cNumber, INIFileName); 
+   WritePrivateProfileString("Settings", "ScanChat", bScanChat ? "1" : "0", INIFileName); 
+   WritePrivateProfileString("Settings", "ClickLinks", bClickLinks ? "1" : "0", INIFileName); 
 } 
 
 // 
@@ -298,16 +323,15 @@ static void SaveSettings (void)
 // 
 static void LoadSettings (void) 
 { 
-   char cFilename[MAX_PATH]; 
-   sprintf_s(cFilename,"%s\\MQ2LinkDB.ini", gszINIPath); 
+   sprintf_s(cLinkDBFileName,"%s\\MQ2LinkDB.txt", gszINIPath); 
 
-   iMaxResults = GetPrivateProfileInt ("Settings", "MaxResults", 10, cFilename); 
+   iMaxResults = GetPrivateProfileInt ("Settings", "MaxResults", 10, INIFileName); 
    if (iMaxResults < 1) iMaxResults = 1; 
 
-   int iScanChat = GetPrivateProfileInt("Settings", "ScanChat", 1, cFilename); 
+   int iScanChat = GetPrivateProfileInt("Settings", "ScanChat", 1, INIFileName); 
    bScanChat = iScanChat > 0; 
 
-   int iClickLinks = GetPrivateProfileInt("Settings", "ClickLinks", 0, cFilename); 
+   int iClickLinks = GetPrivateProfileInt("Settings", "ClickLinks", 0, INIFileName); 
    bClickLinks = iClickLinks > 0; 
 } 
 
@@ -336,18 +360,16 @@ void CreateIndex (void)
 
    // TODO: Make this dynamic size 
    abPresent = new unsigned char[MAX_PRESENT / 8 + 1]; 
-   memset (abPresent, 0, (MAX_PRESENT / 8) + 1); 
+   memset (abPresent, 0, MAX_PRESENT / 8 + 1); 
 
-   char cFilename[MAX_PATH]; 
-   sprintf_s(cFilename,"%s\\MQ2LinkDB.txt", gszINIPath); 
    FILE * File = 0;
-   errno_t err = fopen_s(&File,cFilename, "rt");
+   errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
    iTotalInDB = 0; 
    bKnowTotal = true; 
 
    if (!err) { 
-	   char cLine[1024] = { 0 };
-      while (fgets (cLine, 1024, File) != NULL) { 
+	   char cLine[MAX_STRING] = { 0 };
+      while (fgets (cLine, MAX_STRING, File) != NULL) { 
          int iItemID = ItemID (cLine); 
 
          if (iItemID >= MAX_PRESENT) { 
@@ -355,11 +377,8 @@ void CreateIndex (void)
             continue; 
          } 
 
-         unsigned char cOR = 1 << (iItemID % 8);
-		 int insert = iItemID / 8;
-		 if (insert < (MAX_PRESENT / 8)) {
-			 abPresent[insert] |= cOR;
-		 }
+         unsigned char cOR = 1 << (iItemID % 8); 
+         abPresent[iItemID / 8] |= cOR; 
 
          iTotalInDB++; 
       } 
@@ -394,17 +413,14 @@ static bool FindLink (const char * cLink)
 
    if (abPresent != NULL) { 
       unsigned char cOR = 1 << (iItemID % 8); 
-	  int insert = iItemID / 8;
-	  if (insert < (MAX_PRESENT / 8)) {
-		  if ((abPresent[insert] & cOR) != 0) {
-			  if (!bQuietMode) {
-				  WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID);
-			  }
-			  return (true);
-		  }
-	  }
-   } 
+      if ((abPresent[iItemID / 8] & cOR) != 0) { 
+         if (!bQuietMode) { 
+            WriteChatf ("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID); 
+         } 
 
+         return (true); 
+      } 
+   } 
 
    // Since we're scanning the file anyway, we'll make the index here to save some time, and to 
    // account for ppl creating new MQ2LinkDB.txt files or whatever. 
@@ -414,22 +430,17 @@ static bool FindLink (const char * cLink)
    memset (abPresent, 0, MAX_PRESENT / 8 + 1); 
 
    bool bRet = false; 
-   char cFilename[MAX_PATH]; 
-   sprintf_s(cFilename,"%s\\MQ2LinkDB.txt", gszINIPath); 
 
    FILE * File = 0;
-   errno_t err = fopen_s(&File,cFilename, "rt");
+   errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
    if (!err) { 
 		char cLine[1024] = { 0 };
       while (fgets (cLine, 1024, File) != NULL) { 
          cLine[strlen (cLine) - 1] = '\0';   // No LF pls 
 
-		 if (ItemID(cLine) == iItemID) {
-			 unsigned char cOR = 1 << (iItemID % 8);
-			 int insert = iItemID / 8;
-			 if (insert < (MAX_PRESENT / 8)) {
-				 abPresent[insert] |= cOR;
-			 }
+         if (ItemID (cLine) == iItemID) { 
+            unsigned char cOR = 1 << (iItemID % 8); 
+            abPresent[iItemID / 8] |= cOR; 
 
             bRet = true; 
 
@@ -443,7 +454,7 @@ static bool FindLink (const char * cLink)
                   } 
 
 				  FILE *File2 = 0;
-				  err = fopen_s(&File2,cFilename, "r+");
+				  err = fopen_s(&File2, cLinkDBFileName, "r+");
                   if (!err) { 
                      fseek (File2, lPos - strlen (cLine) - 2, SEEK_SET); 
 
@@ -487,11 +498,8 @@ static bool FindLink (const char * cLink)
 // 
 static void StoreLink (const char * cLink) 
 { 
-   char cFilename[MAX_PATH]; 
-   sprintf_s(cFilename,"%s\\MQ2LinkDB.txt", gszINIPath); 
-
    FILE * File = 0;
-   errno_t err = fopen_s(&File,cFilename, "at");
+   errno_t err = fopen_s(&File, cLinkDBFileName, "at");
    if (!err) { 
       fputs (cLink, File); 
       fputs ("\n", File); 
@@ -501,11 +509,8 @@ static void StoreLink (const char * cLink)
       CreateIndex ();         // Won't create if it's already there 
       if (abPresent != NULL) { 
          int iItemID = ItemID (cLink); 
-         unsigned char cOR = 1 << (iItemID % 8);
-		 int insert = iItemID / 8;
-		 if (insert < (MAX_PRESENT / 8)) {
-			 abPresent[insert] |= cOR;
-		 }
+         unsigned char cOR = 1 << (iItemID % 8); 
+         abPresent[iItemID / 8] |= cOR; 
       } 
 
       if (!bQuietMode) { 
@@ -526,13 +531,11 @@ static void StoreLink (const char * cLink)
 static char * LinkExtract (char * cLink) 
 { 
 	if (char * cTemp = _strdup(cLink)) {
-		int stlen = strlen(cTemp);
+		char * cEnd = strchr(cTemp + START_LINKTEXT, '\x12');
 		int iLen = 1;
-		if (stlen > START_LINKTEXT)
-		{
-			char * cEnd = strchr(cTemp + START_LINKTEXT, '\x12');
 
-			if (cEnd != NULL) {
+		if (cEnd != NULL) {
+			if (*(cTemp + 1) == '\x30') { // Item link
 				*(cEnd + 1) = '\0';
 				iLen = strlen(cTemp);
 
@@ -557,19 +560,24 @@ static void ChatTell(PSPAWNINFO pChar, char *cLine)
    DebugSpew("MQ2LinkDB::ChatTell(%s)",cLine); 
    //WriteChatf("MQ2LinkDB::ChatTell(%s, %s)",pChar->Name,cLine); 
 
-   char cTemp[1024]; 
+   char szCmd[MAX_STRING]; 
    if (!bReplyMode) {
-       sprintf_s(cTemp, "Linkdb told you, '%s'", cLine); 
-       dsp_chat_no_events(cTemp, USERCOLOR_TELL, false);
+       sprintf_s(szCmd, "Linkdb told you, '%s'", cLine);
+       dsp_chat_no_events(szCmd, USERCOLOR_TELL, false);
 	} else {
-       //sprintf_s(cTemp, ";tell %s %s", pChar->Name, cLine);
-       sprintf_s(cTemp, "/tell %s %s", pChar->Name, cLine);
+       sprintf_s(szCmd, ";tell %s %s", pChar->Name, cLine);
        //WriteChatf("MQ2LinkDB::DoCommand(%s)", cTemp);
 	   //pEverQuest->send_tell(pChar->Name,cLine);
-	   //DoCommand(pChar,cTemp);
-       //dsp_chat_no_events(cTemp, USERCOLOR_TELL, false); 
+	   DoCommand(pChar,szCmd);
+       //dsp_chat_no_events(szCmd, USERCOLOR_TELL, false); 
     }
 } 
+
+
+PCONTENTS CursorContents() {
+  return GetCharInfo2()->pInventoryArray->Inventory.Cursor;
+}
+
 
 // 
 // static void DoParameters (PCHAR cParams) 
@@ -578,11 +586,10 @@ template <unsigned int _Size>static void DoParameters (CHAR(&cParams)[_Size])
 { 
    bool bAnyParams = false; 
    _strlwr_s(cParams);
-    char * cWord = NULL;
-	char *next_token1 = NULL;
+   char * cWord = NULL;
+   char *next_token1 = NULL;
 
-	cWord = strtok_s(cParams, " ", &next_token1);
-	//cWord = strtok_s(NULL, "'", &next_token1);
+   cWord = strtok_s(cParams, " ", &next_token1);
    while (cWord != NULL) { 
       if (strcmp (cWord, "/quiet") == 0) { 
          bQuietMode = !bQuietMode; 
@@ -639,17 +646,38 @@ template <unsigned int _Size>static void DoParameters (CHAR(&cParams)[_Size])
             SaveSettings (); 
 
             bAnyParams = true; 
-      } else if (strcmp (cWord, "/import") == 0) { 
-         ConvertItemsDotTxt (); 
-         bAnyParams = true; 
-      } 
+      } else if (strcmp (cWord, "/user") == 0) { 
+         cWord = strtok_s(NULL, " ", &next_token1);
+
+		 WriteChatf ("MQ2LinkDB: Will respond to tells from %s.", cWord);
+		 WritePrivateProfileString("Toons", cWord, "on", INIFileName); 
+
+		 bAnyParams = true; 
+	  }
+	  else if (strcmp(cWord, "/import") == 0) {
+		  if (FindFirstItem()) {
+			  ConvertItemsDotTxt();
+			  bAnyParams = true;
+		  }
+	  } else if (strcmp (cWord, "/verify") == 0) {
+         cWord = strtok_s(NULL, " ", &next_token1);
+
+         iVerifyCount = 1;
+         if (atoi(cWord) > 0) {
+            iVerifyCount = atoi(cWord);
+         } 
+
+		 VerifyLinks ();
+
+		 bAnyParams = true;
+	  }
 
       cWord = strtok_s(NULL, " ", &next_token1);
    } 
 
    if (!bAnyParams) { 
       WriteChatf ("%s",MY_STRING); 
-	  WriteChatf ("MQ2LinkDB: Syntax: \ay/link [/max n] [/scan on|off] [/click on|off] [/item #][search string]\ax"); 
+	  WriteChatf ("MQ2LinkDB: Syntax: \ay/link [/max n] [/scan on|off] [/click on|off] [/import \ar(needs at least 1 item in inventory or on cursor)\ay] [/item #][/verify #][search string]\ax"); 
       if (bKnowTotal) { 
          WriteChatf ("MQ2LinkDB: \ay%d\ax links in database, \ay%d\ax links added this session", iTotalInDB, iAddedThisSession); 
       } else { 
@@ -664,22 +692,10 @@ template <unsigned int _Size>static void DoParameters (CHAR(&cParams)[_Size])
       if (bClickLinks) { 
          WriteChatf ("MQ2LinkDB: Auto-clicking links on exact matches"); 
       } else { 
-         WriteChatf ("MQ2LinkDB: Not auto-clicking links on exact matches"); 
+         WriteChatf ("MQ2LinkDB: Not auto-clicking links on exact matches");
       } 
    } 
 } 
-
-// This routine will authorize a user for the /link and /recipe commands...
-bool AuthorizedUser(PCHAR szName)
-{
-	DebugSpew("MQ2LinkDB::AuthorizedUser(%s)",szName);
-	//WriteChatf("MQ2LinkDB::AuthorizedUser(%s)",szName);
-
-	char szTemp[MAX_STRING] = {0};
-	DWORD Result = GetPrivateProfileString("Users",szName,"off",szTemp,MAX_STRING,INIFileName); 
-	//WriteChatf("MQLinkDB(%d) User(%s)=%s in file '%s'", Result, szName, szTemp, INIFileName); return TRUE;
-	return (_strnicmp(szTemp,"on",3)==0);
-}
 
 // This routine will send a link click to EQ to retrieve the item data
 VOID ClickLink (PSPAWNINFO pChar, PCHAR szLink)
@@ -710,10 +726,8 @@ template <unsigned int _Size>int SearchLinkDB(char** ppOutputArray, CHAR(&search
 
 	iNextID = 0; iCurrentID = 0;
     int iFound = 0, iTotal = 0;
-    char cFilename[MAX_PATH];
-    sprintf_s(cFilename,"%s\\MQ2LinkDB.txt", gszINIPath);
 	FILE * File = 0;
-	errno_t err = fopen_s(&File,cFilename, "rt");
+	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
 
 	if (!err) {
 		if (!bQuietMode) { 
@@ -732,16 +746,13 @@ template <unsigned int _Size>int SearchLinkDB(char** ppOutputArray, CHAR(&search
 				iNextID = iItemID;
 			}
             unsigned char cOR = 1 << (iItemID % 8);
-			int insert = iItemID / 8;
-			if (insert < (MAX_PRESENT / 8)) {
-				abPresent[insert] |= cOR;
-			}
+            abPresent[iItemID / 8] |= cOR;
 
             cLine[strlen (cLine) - 1] = '\0';   // No LF pls
             strcpy_s(cCopy, cLine + START_LINKTEXT);
             _strlwr_s(cCopy);
 
-            if ((iItemID == iFindItemID) || (bExact && _strnicmp(cCopy, searchText, strlen(cCopy) - 1) == 0) ||
+            if ((iItemID == iFindItemID) || (bExact && strncmp(cCopy, searchText, strlen(cCopy) - 1) == 0) ||
                 (!bExact && strstr(cCopy, searchText) != NULL)) {
                 if (iFound < MAX_INTERNAL_RESULTS) {
 					
@@ -769,20 +780,67 @@ template <unsigned int _Size>int SearchLinkDB(char** ppOutputArray, CHAR(&search
     return iFound;
 }
 
+
+// 
+// int VerifyLinks (void) 
+// 
+int VerifyLinks (void) 
+{ 
+#define VERIFYLINKCOUNT 100
+
+   char cFilename[MAX_PATH];
+   sprintf_s(cFilename,"%s\\links.txt", gszINIPath); 
+   FILE * File = 0;
+   errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+
+   if (!err) {
+      //WriteChatf ("MQ2LinkDB: Verifying links.txt..."); 
+      char cLine[MAX_STRING]; 
+
+      int iLinkCount = 0;
+	  int iEndingLinkCount = iVerifyCount+VERIFYLINKCOUNT-1;
+
+      while (fgets (cLine, MAX_STRING, File) != NULL) { 
+         cLine[strlen (cLine) - 1] = '\0';
+		 iLinkCount++;
+
+		 if (iLinkCount >= iVerifyCount) {
+            ChatTell((PSPAWNINFO)pLocalPlayer, cLine);
+			if (iLinkCount >= iEndingLinkCount) break;
+		 }
+	  }
+
+	  if (iLinkCount < iVerifyCount) {
+		 WriteChatf ("MQ2LinkDB: \ayUnable to skip to line \ar%d\ay, only \ar%d\ay lines exist in links.txt", iVerifyCount, iLinkCount);
+	  } else {
+         WriteChatf ("MQ2LinkDB: Complete! \ay%d\ax links (from \ay%d\ax to \ay%d\ax) verified", iLinkCount-iVerifyCount+1, iVerifyCount, iLinkCount); 
+	  }
+      fclose (File); 
+   } else { 
+      WriteChatf ("MQ2LinkDB: \arSource file not found (links.txt)"); 
+   } 
+
+   return 0; 
+} 
+
+
+// 
+// static VOID CommandLink (PSPAWNINFO pChar, PCHAR szLine) 
+// 
 static VOID CommandLink(PSPAWNINFO pChar, PCHAR szLine) 
 { 
-	CHAR szCmd[MAX_STRING] = { 0 };
-	strcpy_s(szCmd, szLine);
+	CHAR szLLine[MAX_STRING] = { 0 };
+	strcpy_s(szLLine, szLine);
 	iFindItemID = 0;
 	bRunNextCommand = TRUE;
-	if (strlen (szCmd) < 3) {
+	if (strlen (szLLine) < 3) {
 		CHAR szEmpty[MAX_STRING] = { 0 };
 		DoParameters(szEmpty); 
 		return;       // We don't list entire DB. that's just not funny 
 	} 
 
-	if (szCmd[0] == '/' || szCmd[0] == '-') { 
-		DoParameters (szCmd); 
+	if (szLLine[0] == '/' || szLLine[0] == '-') { 
+		DoParameters (szLLine); 
 		if (!iFindItemID)
 			return; 
 	} 
@@ -790,7 +848,7 @@ static VOID CommandLink(PSPAWNINFO pChar, PCHAR szLine)
 	char ** cArray = new char * [MAX_INTERNAL_RESULTS]; 
 	memset (cArray, 0, sizeof (char *) * MAX_INTERNAL_RESULTS); 
 
-	int iFound = SearchLinkDB(cArray, szCmd, false); 
+	int iFound = SearchLinkDB(cArray, szLLine, false); 
 
 	bool bForcedExtra = false; 
 	int iMaxLoop = (iFound > MAX_INTERNAL_RESULTS ? MAX_INTERNAL_RESULTS : iFound); 
@@ -816,16 +874,17 @@ static VOID CommandLink(PSPAWNINFO pChar, PCHAR szLine)
                strcat_s(cTemp, " (Augmented)"); 
             } 
 
-            if (iFindItemID || (strlen (cArray[i] + START_LINKTEXT + 1) == strlen(szCmd) && _memicmp(cArray[i] + START_LINKTEXT, szCmd, strlen(szCmd)) == 0)) { 
+            if (iFindItemID || (strlen (cArray[i] + START_LINKTEXT + 1) == strlen(szLLine) && _memicmp(cArray[i] + START_LINKTEXT, szLLine, strlen(szLLine)) == 0)) { 
 			   strcpy_s(cLink, cArray[i]);
 			   strcat_s(cTemp, " <Exact Match>"); 
                bShow = true;        // We display this result even if we've already shown iMaxResults count 
                bForcedExtra = i >= iMaxResults; 
-               if (bClickLinks && !bReplyMode) ClickLink(pChar, cArray[i]);
+               //if (bClickLinks && !bReplyMode) ClickLink(pChar, cArray[i]);
+               if (bClickLinks && !bReplyMode) ClickLink(pChar, cLink);
             } 
 
             if (bShow) { 
-               ChatTell(pChar, cTemp); 
+               ChatTell((PSPAWNINFO)pLocalPlayer, cTemp);
             } 
 
             free (cArray[i]); 
@@ -857,7 +916,7 @@ static VOID CommandLink(PSPAWNINFO pChar, PCHAR szLine)
 	if (!bQuietMode) { 
 		WriteChatf("%s",cTemp3); 
 	}
-	ChatTell(pChar, cTemp); 
+	ChatTell((PSPAWNINFO)pLocalPlayer, cTemp);
 	bReplyMode = false;
 } 
 
@@ -887,7 +946,8 @@ PLUGIN_API VOID ShutdownPlugin(VOID)
    free (abPresent); 
    abPresent = NULL; 
 } 
-/*1 a.ITEM_NUMBER
+/*
+1 a.ITEM_NUMBER
 2 a.NAME
 3 a.LORE_DESCRIPTION
 4 a.ADVANCED_LORE_TEXT_FILENAME
@@ -1139,44 +1199,13 @@ PLUGIN_API VOID ShutdownPlugin(VOID)
 250 a.CREATOR_ID
 251 a.NO_GROUND
 252 a.NO_LOOT
-
 */
+
 // This is called every time EQ shows a line of chat with CEverQuest::dsp_chat, 
 // but after MQ filters and chat events are taken care of. 
 PLUGIN_API DWORD OnIncomingChat(PCHAR Line, DWORD Color) 
 { 
    //DebugSpew("MQ2LinkDB::OnIncomingChat(%s)",Line); 
-
-   if (strstr(Line,"tells you,") || strstr(Line,"told you,")) { 
-
-	   char * cTemp = _strdup (Line);
-	   char * cRequest = NULL;
-	   char *next_token1 = NULL;
-
-	   cRequest = strtok_s(cTemp, "'", &next_token1);
-	   cRequest = strtok_s(NULL, "'", &next_token1);
-	   if (cRequest == NULL) {
-		   free(cTemp);
-		   return 0;
-	   }
-
-	   //WriteChatf("MQ2LinkDB:: cRequest = '%s'", cRequest);
-
-	   if (_memicmp(cRequest, "!link ", 6) == 0) {
-		   bReplyMode = true;
-		   char szName[MAX_STRING] = {0};
-           GetArg(szName,Line,1);
-
-		   if (AuthorizedUser(szName)) {
-			   PSPAWNINFO pChSpawn=new SPAWNINFO;
-               memset(pChSpawn,0,sizeof(SPAWNINFO));
-               strncpy_s(pChSpawn->Name,szName,sizeof(pChSpawn->Name));
-
-               CommandLink(pChSpawn, cRequest + 6);
-		   }
-       } 
-       free(cTemp); 
-   } 
 
    if (bScanChat) { 
       //DebugSpew("MQ2LinkDB::OnIncomingChat(%s)",Line); 
@@ -1201,700 +1230,1249 @@ PLUGIN_API DWORD OnIncomingChat(PCHAR Line, DWORD Color)
    return 0; 
 } 
 
-// DB Converter now part of plugin 
-typedef struct { 
-   int  itemclass; 
-   char name[64]; 
-   char lore[64]; 
-   char lorefile[255]; 
-   char idfile[16]; 
-   unsigned long id; 
-   int weight; 
-   short norent; 
-   short nodrop; 
-   short size; 
-   short slots; 
-   long price; 
-   short icon; 
-   short UNK013; 
-   short UNK014; 
-   int benefitflag; 
-   short tradeskills; 
-   short cr; 
-   short dr; 
-   short pr; 
-   short mr; 
-   short fr; 
-   short svcorruption; 
-   short astr; 
-   short asta; 
-   short aagi; 
-   short adex; 
-   short acha; 
-   short aint; 
-   short awis; 
-   short hp; 
-   short mana; 
-   short endur; 
-   short ac; 
-   short classes; 
-   short races; 
-   short deity; 
-   short skillmodvalue; 
-   short UNK038; 
-   short skillmodtype; 
-   short banedmgrace; 
-   short banedmgbody; 
-   short banedmgraceamt; 
-   short banedmgamt; 
-   short magic; 
-   short casttime_; 
-   short reqlevel; 
-   short reclevel; 
-   short recskill; 
-   short bardtype; 
-   short bardvalue; 
-   short light; 
-   short delay; 
-   short elemdmgtype; 
-   short elemdmgamt; 
-   short range; 
-   short damage; 
-   short color; 
-   short itemtype; 
-   short material; 
-   short UNK060; 
-   short elitematerial; 
-   short sellrate; 
-   short combateffects; 
-   short shielding; 
-   short stunresist; 
-   short strikethrough; 
-   short extradmgskill; 
-   short extradmgamt; 
-   short spellshield; 
-   short avoidance; 
-   short accuracy; 
-   short charmfileid; 
-   short factionmod1; 
-   short factionamt1; 
-   short factionmod2; 
-   short factionamt2; 
-   short factionmod3; 
-   short factionamt3; 
-   short factionmod4; 
-   short factionamt4; 
-   short charmfile; 
-   short augtype; 
-   short augrestrict; 
-   short augdistiller; 
-   short augslot1type; 
-   short augslot1visible; 
-   short augslot1unk2; 
-   short augslot2type; 
-   short augslot2visible; 
-   short augslot2unk2; 
-   short augslot3type; 
-   short augslot3visible; 
-   short augslot3unk2; 
-   short augslot4type; 
-   short augslot4visible; 
-   short augslot4unk2; 
-   short augslot5type; 
-   short augslot5visible; 
-   short augslot5unk2; 
-   short pointtype; 
-   short ldontheme; 
-   short ldonprice; 
-   short ldonsellbackrate; 
-   short ldonsold; 
-   short bagtype; 
-   short bagslots; 
-   short bagsize; 
-   short bagwr; 
-   short book; 
-   short booktype; 
-   short filename; 
-   short loregroup; 
-   short artifactflag; 
-   short UNK109; 
-   short favor; 
-   short guildfavor; 
-   short fvnodrop; 
-   short dotshielding; 
-   short attack; 
-   short regen; 
-   short manaregen; 
-   short enduranceregen; 
-   short haste; 
-   short damageshield; 
-   short UNK120; 
-   short UNK121; 
-   short attuneable; 
-   short nopet; 
-   short UNK124; 
-   short potionbelt; 
-   short potionbeltslots; 
-   short stacksize; 
-   short notransfer; 
-   short scriptfile; 
-   short questitemflag; 
-   short expendablearrow; 
-   char  UNK132[255]; 
-   short clickeffect; 
-   short clicktype; 
-   short clicklevel2; 
-   short clicklevel; 
-   short maxcharges; 
-   short casttime; 
-   short recasttype; 
-   short recastdelay; 
-   short clickunk5; 
-   short clickname; 
-   short clickunk7; 
-   short proceffect; 
-   short proctype; 
-   short proclevel2; 
-   short proclevel; 
-   short procunk1; 
-   short procunk2; 
-   short procunk3; 
-   short procunk4; 
-   short procrate; 
-   short procname; 
-   short procunk7; 
-   short worneffect; 
-   short worntype; 
-   short wornlevel2; 
-   short wornlevel; 
-   short wornunk1; 
-   short wornunk2; 
-   short wornunk3; 
-   short wornunk4; 
-   short wornunk5; 
-   short wornname; 
-   short wornunk7; 
-   short focuseffect; 
-   short focustype; 
-   short focuslevel2; 
-   short focuslevel; 
-   short focusunk1; 
-   short focusunk2; 
-   short focusunk3; 
-   short focusunk4; 
-   short focusunk5; 
-   short focusname; 
-   short focusunk7; 
-   short scrolleffect; 
-   short scrolltype; 
-   short scrolllevel2; 
-   short scrolllevel; 
-   short scrollunk1; 
-   short scrollunk2; 
-   short scrollunk3; 
-   short scrollunk4; 
-   short scrollunk5; 
-   short scrollname; 
-   short scrollunk7; 
-   short powersourcecapacity; 
-   short purity; 
-   short dsmitigation;
-   short heroic_str;
-   short heroic_int;
-   short heroic_wis;
-   short heroic_agi;
-   short heroic_dex;
-   short heroic_sta;
-   short heroic_cha;
-   short healamt;
-   short spelldmg;
-   short clairvoyance;
-   short backstabdmg; //206
-   short bardeffect;
-   short bardeffecttype;
-   short bardlevel2;
-   short bardlevel;
-   short bardunk1;
-   short bardunk2;
-   short bardunk3;
-   short bardunk4;
-   short bardunk5;
-   short bardname;
-   short bardunk7;
-   short UNK214;
-   short UNK219;
-   short UNK220;
-   short UNK221;
-   short UNK222;
-   short UNK223;
-   short UNK224;
-   short UNK225;
-   short UNK226;
-   short UNK227;
-   short UNK228;
-   short UNK229;
-   short UNK230;
-   short UNK231;
-   short UNK232;
-   short UNK233;
-   short UNK234;
-   short UNK235;
-   short UNK236;
-   short UNK237;
-   short UNK238;
-   short UNK239;
-   short UNK240;
-   short UNK241;
-   short UNK242;
-   short evolvinglevel;
-   short verified; 
-   short created;
-} EQITEM, * PEQITEM; 
-
-// 
-// void SetField (PEQITEM Item, int iField, const char * cField) 
-// 
-void SetField (PEQITEM Item, int iField, const char * cField) 
-{ 
-   int iInt = atoi (cField); 
-   bool bBool = iInt > 0; 
-   switch (iField) { 
-      case   0: Item->itemclass = iInt; break; 
-      case   1: strcpy_s(Item->name, cField); break; 
-      case   2: strcpy_s(Item->lore, cField); break; 
-      case   3: strcpy_s(Item->lorefile, cField); break; 
-      case   4: strcpy_s(Item->idfile, cField); break; 
-      case   5: Item->id = iInt; break; 
-      case   6: Item->weight = iInt; break; 
-      case   7: Item->norent = iInt; break; 
-      case   8: Item->nodrop = iInt; break; 
-      case   9: Item->size = iInt; break; 
-      case  10: Item->slots = iInt; break; 
-      case  11: Item->price = iInt; break; 
-      case  12: Item->icon = iInt; break; 
-      case  13: Item->UNK013 = iInt; break; 
-      case  14: Item->UNK014 = iInt; break; 
-      case  15: Item->benefitflag = iInt; break; 
-      case  16: Item->tradeskills = bBool; 
-      case  17: Item->cr = iInt; break; 
-      case  18: Item->dr = iInt; break; 
-      case  19: Item->pr = iInt; break; 
-      case  20: Item->mr = iInt; break; 
-      case  21: Item->fr = iInt; break; 
-      case  22: Item->svcorruption = iInt; break; 
-      case  23: Item->astr = iInt; break; 
-      case  24: Item->asta = iInt; break; 
-      case  25: Item->aagi = iInt; break; 
-      case  26: Item->adex = iInt; break; 
-      case  27: Item->acha = iInt; break; 
-      case  28: Item->aint = iInt; break; 
-      case  29: Item->awis = iInt; break; 
-      case  30: Item->hp = iInt; break; 
-      case  31: Item->mana = iInt; break; 
-      case  32: Item->endur = iInt; break; 
-      case  33: Item->ac = iInt; break; 
-      case  34: Item->classes = iInt; break; 
-      case  35: Item->races = iInt; break; 
-      case  36: Item->deity = iInt; break; 
-      case  37: Item->skillmodvalue = iInt; break; 
-      case  38: Item->UNK038 = iInt; break; 
-      case  39: Item->skillmodtype = iInt; break; 
-      case  40: Item->banedmgrace = iInt; break; 
-      case  41: Item->banedmgbody = iInt; break; 
-      case  42: Item->banedmgraceamt = iInt; break; 
-      case  43: Item->banedmgamt = iInt; break; 
-      case  44: Item->magic = iInt; break; 
-      case  45: Item->casttime_ = iInt; break; 
-      case  46: Item->reqlevel = iInt; break; 
-      case  47: Item->reclevel = iInt; break; 
-      case  48: Item->recskill = iInt; break; 
-      case  49: Item->bardtype = iInt; break; 
-      case  50: Item->bardvalue = iInt; break; 
-      case  51: Item->light = iInt; break; 
-      case  52: Item->delay = iInt; break; 
-      case  53: Item->elemdmgtype = iInt; break; 
-      case  54: Item->elemdmgamt = iInt; break; 
-      case  55: Item->range = iInt; break; 
-      case  56: Item->damage = iInt; break; 
-      case  57: Item->color = iInt; break; 
-      case  58: Item->itemtype = iInt; break; 
-      case  59: Item->material = iInt; break; 
-      case  60: Item->UNK060 = iInt; break; 
-      case  61: Item->elitematerial = iInt; break; 
-      case  62: Item->sellrate = iInt; break; 
-      case  63: Item->combateffects = iInt; break; 
-      case  64: Item->shielding = iInt; break; 
-      case  65: Item->stunresist = iInt; break; 
-      case  66: Item->strikethrough = iInt; break; 
-      case  67: Item->extradmgskill = iInt; break; 
-      case  68: Item->extradmgamt = iInt; break; 
-      case  69: Item->spellshield = iInt; break; 
-      case  70: Item->avoidance = iInt; break; 
-      case  71: Item->accuracy = iInt; break; 
-      case  72: Item->charmfileid = iInt; break; 
-      case  73: Item->factionmod1 = iInt; break; 
-      case  74: Item->factionamt1 = iInt; break; 
-      case  75: Item->factionmod2 = iInt; break; 
-      case  76: Item->factionamt2 = iInt; break; 
-      case  77: Item->factionmod3 = iInt; break; 
-      case  78: Item->factionamt3 = iInt; break; 
-      case  79: Item->factionmod4 = iInt; break; 
-      case  80: Item->factionamt4 = iInt; break; 
-      case  81: Item->charmfile = iInt; break; 
-      case  82: Item->augtype = iInt; break; 
-      case  83: Item->augrestrict = iInt; break; 
-      case  84: Item->augdistiller = iInt; break; 
-      case  85: Item->augslot1type = iInt; break; 
-      case  86: Item->augslot1visible = iInt; break; 
-      case  87: Item->augslot1unk2 = iInt; break; 
-      case  88: Item->augslot2type = iInt; break; 
-      case  89: Item->augslot2visible = iInt; break; 
-      case  90: Item->augslot2unk2 = iInt; break; 
-      case  91: Item->augslot3type = iInt; break; 
-      case  92: Item->augslot3visible = iInt; break; 
-      case  93: Item->augslot3unk2 = iInt; break; 
-      case  94: Item->augslot4type = iInt; break; 
-      case  95: Item->augslot4visible = iInt; break; 
-      case  96: Item->augslot4unk2 = iInt; break; 
-      case  97: Item->augslot5type = iInt; break; 
-      case  98: Item->augslot5visible = iInt; break; 
-      case  99: Item->augslot5unk2 = iInt; break; 
-      case 100: Item->pointtype = iInt; break; 
-      case 101: Item->ldontheme = iInt; break; 
-      case 102: Item->ldonprice = iInt; break; 
-      case 103: Item->ldonsellbackrate = iInt; break; 
-      case 104: Item->ldonsold = iInt; break; 
-      case 105: Item->bagtype = iInt; break; 
-      case 106: Item->bagslots = iInt; break; 
-      case 107: Item->bagsize = iInt; break; 
-      case 108: Item->bagwr = iInt; break; 
-      case 109: Item->book = iInt; break; 
-      case 110: Item->booktype = iInt; break; 
-      case 111: Item->filename = iInt; break; 
-      case 112: Item->loregroup = iInt; break; 
-      case 113: Item->artifactflag = iInt; break; 
-      case 114: Item->UNK109 = iInt; break; 
-      case 115: Item->favor = iInt; break; 
-      case 116: Item->guildfavor = iInt; break; 
-      case 117: Item->fvnodrop = iInt; break; 
-      case 118: Item->dotshielding = iInt; break; 
-      case 119: Item->attack = iInt; break; 
-      case 120: Item->regen = iInt; break; 
-      case 121: Item->manaregen = iInt; break; 
-      case 122: Item->enduranceregen = iInt; break; 
-      case 123: Item->haste = iInt; break; 
-      case 124: Item->damageshield = iInt; break; 
-      case 125: Item->UNK120 = iInt; break; 
-      case 126: Item->UNK121 = iInt; break; 
-      case 127: Item->attuneable = iInt; break; 
-      case 128: Item->nopet = iInt; break; 
-      case 129: Item->UNK124 = iInt; break; 
-      case 130: Item->potionbelt = iInt; break; 
-      case 131: Item->potionbeltslots = iInt; break; 
-      case 132: Item->stacksize = iInt; break; 
-      case 133: Item->notransfer = iInt; break; 
-      case 134: Item->scriptfile = iInt; break; 
-      case 135: Item->questitemflag = iInt; break; 
-      case 136: Item->expendablearrow = iInt; break; 
-      case 137: strcpy_s(Item->UNK132, cField); break; 
-      case 138: Item->clickeffect = iInt; break; 
-      case 139: Item->clicktype = iInt; break; 
-      case 140: Item->clicklevel2 = iInt; break; 
-      case 141: Item->clicklevel = iInt; break; 
-      case 142: Item->maxcharges = iInt; break; 
-      case 143: Item->casttime = iInt; break; 
-      case 144: Item->recastdelay = iInt; break; 
-      case 145: Item->recasttype = iInt; break; 
-      case 146: Item->clickunk5 = iInt; break; 
-      case 147: Item->clickname = iInt; break; 
-      case 148: Item->clickunk7 = iInt; break; 
-      case 149: Item->proceffect = iInt; break; 
-      case 150: Item->proctype = iInt; break; 
-      case 151: Item->proclevel2 = iInt; break; 
-      case 152: Item->proclevel = iInt; break; 
-      case 153: Item->procunk1 = iInt; break; 
-      case 154: Item->procunk2 = iInt; break; 
-      case 155: Item->procunk3 = iInt; break; 
-      case 156: Item->procunk4 = iInt; break; 
-      case 157: Item->procrate = iInt; break; 
-      case 158: Item->procname = iInt; break; 
-      case 159: Item->procunk7 = iInt; break; 
-      case 160: Item->worneffect = iInt; break; 
-	  case 161: Item->worntype = iInt; break; 
-      case 162: Item->wornlevel2 = iInt; break; 
-      case 163: Item->wornlevel = iInt; break; 
-      case 164: Item->wornunk1 = iInt; break; 
-      case 165: Item->wornunk2 = iInt; break; 
-      case 166: Item->wornunk3 = iInt; break; 
-      case 167: Item->wornunk4 = iInt; break; 
-      case 168: Item->wornunk5 = iInt; break; 
-      case 169: Item->wornname = iInt; break; 
-      case 170: Item->wornunk7 = iInt; break; 
-      case 171: Item->focuseffect = iInt; break; 
-      case 172: Item->focustype = iInt; break; 
-      case 173: Item->focuslevel2 = iInt; break; 
-      case 174: Item->focuslevel = iInt; break; 
-      case 175: Item->focusunk1 = iInt; break; 
-      case 176: Item->focusunk2 = iInt; break; 
-      case 177: Item->focusunk3 = iInt; break; 
-      case 178: Item->focusunk4 = iInt; break; 
-      case 179: Item->focusunk5 = iInt; break; 
-      case 180: Item->focusname = iInt; break; 
-      case 181: Item->focusunk7 = iInt; break; 
-      case 182: Item->scrolleffect = iInt; break; 
-      case 183: Item->scrolltype = iInt; break; 
-      case 184: Item->scrolllevel2 = iInt; break; 
-      case 185: Item->scrolllevel = iInt; break; 
-      case 186: Item->scrollunk1 = iInt; break; 
-      case 187: Item->scrollunk2 = iInt; break; 
-      case 188: Item->scrollunk3 = iInt; break; 
-      case 189: Item->scrollunk4 = iInt; break; 
-      case 190: Item->scrollunk5 = iInt; break; 
-      case 191: Item->scrollname = iInt; break; 
-      case 192: Item->scrollunk7 = iInt; break; 
-      case 193: Item->powersourcecapacity = iInt; break; 
-      case 194: Item->purity = iInt; break; 
-	  case 195: Item->dsmitigation = iInt; break;
-	  case 196: Item->heroic_str = iInt; break;
-	  case 197: Item->heroic_int = iInt; break;
-	  case 198: Item->heroic_wis = iInt; break;
-	  case 199: Item->heroic_agi = iInt; break;
-	  case 200: Item->heroic_dex = iInt; break;
-	  case 201: Item->heroic_sta = iInt; break;
-	  case 202: Item->heroic_cha = iInt; break;
-	  case 203: Item->healamt = iInt; break;
-	  case 204: Item->spelldmg = iInt; break;
-	  case 205: Item->clairvoyance = iInt; break;
-	  case 206: Item->backstabdmg = iInt; break;
-	  case 207: Item->bardeffect = iInt; break;
-	  case 208: Item->bardeffecttype = iInt; break;
-	  case 209: Item->bardlevel2 = iInt; break;
-	  case 210: Item->bardlevel = iInt; break;
-      case 211: Item->bardunk1 = iInt; break;
-      case 212: Item->bardunk2 = iInt; break;
-      case 213: Item->bardunk3 = iInt; break;
-      case 214: Item->bardunk4 = iInt; break;
-      case 215: Item->bardunk5 = iInt; break;
-      case 216: Item->bardname = iInt; break;
-      case 217: Item->bardunk7 = iInt; break;
-      case 218: Item->UNK214 = iInt; break;
-      case 219: Item->UNK219 = iInt; break;
-      case 220: Item->UNK220 = iInt; break;
-      case 221: Item->UNK221 = iInt; break;
-      case 222: Item->UNK222 = iInt; break;
-      case 223: Item->UNK223 = iInt; break;
-      case 224: Item->UNK224 = iInt; break;
-      case 225: Item->UNK225 = iInt; break;
-      case 226: Item->UNK226 = iInt; break;
-      case 227: Item->UNK227 = iInt; break;
-      case 228: Item->UNK228 = iInt; break;
-      case 229: Item->UNK229 = iInt; break;
-      case 230: Item->UNK230 = iInt; break;
-      case 231: Item->UNK231 = iInt; break;
-      case 232: Item->UNK232 = iInt; break;
-      case 233: Item->UNK233 = iInt; break;
-      case 234: Item->UNK234 = iInt; break;
-      case 235: Item->UNK235 = iInt; break;
-      case 236: Item->UNK236 = iInt; break;
-      case 237: Item->UNK237 = iInt; break;
-      case 238: Item->UNK238 = iInt; break;
-      case 239: Item->UNK239 = iInt; break;
-      case 240: Item->UNK240 = iInt; break;
-      case 241: Item->UNK241 = iInt; break;
-	  case 242: Item->UNK242 = iInt; break;
-	  case 243: Item->evolvinglevel = iInt; break;
-      case 244: Item->verified = iInt; break; 
-   } 
-} 
-
-// 
-// void ReadItem (char * cLine) 
-// 
-static void ReadItem (PEQITEM Item, char * cLine) 
-{ 
-   char * cPtr = cLine; 
-   int iField = 0; 
-
-   while (*cPtr) { 
-      char cField[256]; 
-      char * cDest = cField;
-	  bool bEscape = false;
-
-	  //DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
-      while ((*cPtr != '|' || bEscape) && *cPtr != '\0') { 
-		 if (bEscape) bEscape = !bEscape; else bEscape = *cPtr == '\\';
-		 if (bEscape) {cPtr++ ; /*DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);*/ continue;}
-		 *(cDest++) = *(cPtr++); 
-		 //DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
-      } 
-      *cDest = '\0'; 
-      cPtr++; 
-
-      //WriteChatf("cField: %s", cField); 
-      SetField (Item, iField++, cField); 
-   } 
-} 
+//
+// DB Converter now part of plugin
+//
+#if 0
 typedef unsigned int uint32_t;
 // 
 // uint32_t calc_hash (const char *string) 
 // 
-static uint32_t calc_hash (const char *string) 
-{ 
-   register int hash = 0; 
+static uint32_t calc_hash(const char *string)
+{
+   register int hash = 0;
 
-   while (*string != '\0') { 
-      register int c = toupper(*string); 
+   while (*string != '\0') {
+      register int c = toupper(*string);
       hash *= 0x1F; 
       hash += (int) c; 
 
-      string++; 
-   } 
+      string++;
+   }
 
    return hash; 
 } 
 
-template <unsigned int _Size>static void MakeLink (PEQITEM Item, CHAR(&cLink)[_Size]) 
-{ 
+template <unsigned int _Size>static void MakeLink (PEQITEM Item, CHAR(&cLink)[_Size])
+{
 	char hashstr[512] = { 0 };
 
    // charm
-   if(Item->itemclass == 0 && Item->charmfileid != 0) { 
-      sprintf_s(hashstr, "%d%s%d %d %d %d %d %d %d %d", 
-         Item->id, Item->name, 
-         Item->light, Item->icon, Item->price, Item->size, 
-         Item->itemclass, Item->itemtype, Item->favor, 
-         Item->guildfavor); 
+   if (Item->itemclass == 0 && Item->charmfileid != 0) {
+      sprintf_s(hashstr, "%d%s%d %d %d %d %d %d %d %d",
+         Item->id, Item->name,
+         Item->light, Item->icon, Item->price, Item->size,
+         Item->itemclass, Item->itemtype, Item->favor,
+         Item->guildfavor);
 
       //WriteChatf("Charm: %s", Item->name); 
       //WriteChatf("Hash: %s", hashstr); 
    // books
-   } else if(Item->itemclass == 2) { 
-      sprintf_s(hashstr, "%d%s%d%d%09X", 
-         Item->id, Item->name, 
-         Item->weight, Item->booktype, Item->price); 
+   }
+   else if (Item->itemclass == 2) {
+      sprintf_s(hashstr, "%d%s%d%d%09X",
+         Item->id, Item->name,
+         Item->weight, Item->booktype, Item->price);
 
       //WriteChatf("Book: %s", Item->name); 
       //WriteChatf("Hash: %s", hashstr); 
    // bags
-   } else if(Item->itemclass == 1) { 
-      sprintf_s(hashstr, "%d%s%x%d%09X%d", 
-         Item->id, Item->name, 
-         Item->bagslots, Item->bagwr, Item->price, Item->weight); 
+   }
+   else if (Item->itemclass == 1) {
+      sprintf_s(hashstr, "%d%s%x%d%09X%d",
+         Item->id, Item->name,
+         Item->bagslots, Item->bagwr, Item->price, Item->weight);
 
       //WriteChatf("Bag: %s", Item->name); 
       //WriteChatf("Hash: %s", hashstr); 
    // normal items
-   } else { 
-      sprintf_s(hashstr, "%d%s%d %d %d %d %d %d %d %d %d %d %d %d %d", 
-         Item->id, Item->name, 
-         Item->mana, Item->hp, Item->favor, Item->light, 
-         Item->icon, Item->price, Item->weight, Item->reqlevel, 
-         Item->size, Item->itemclass, Item->itemtype, Item->ac, 
-         Item->guildfavor); 
+   } 
+   else {
+      sprintf_s(hashstr, "%d%s%d %d %d %d %d %d %d %d %d %d %d %d %d",
+         Item->id, Item->name,
+         Item->mana, Item->hp, Item->favor, Item->light,
+         Item->icon, Item->price, Item->weight, Item->reqlevel,
+         Item->size, Item->itemclass, Item->itemtype, Item->ac,
+         Item->guildfavor);
 
       //WriteChatf("Item: %s", Item->name); 
       //WriteChatf("Hash: %s", hashstr); 
    } 
 
-   uint32_t hash = calc_hash (hashstr); 
+   uint32_t hash = calc_hash(hashstr);
 
-   if (Item->loregroup > 1000) 
-   { 
+   if (Item->loregroup > 1000)
+   {
       // Evolving 
-      sprintf_s(cLink, "\x12%d%05X%05X%05X%05X%05X%05X%06X%1d%04X%1X%05X%08X%s\x12", 
-         0, 
-         Item->id, 
+      sprintf_s(cLink, "\x12%d%05X%05X%05X%05X%05X%05X%06X%1d%04X%1X%05X%08X%s\x12",
+         0,
+         Item->id,
          0, 0, 0, 0, 0, // Augs 
 		 0, // New field in CoF
-         1, Item->loregroup, (Item->id%10)+1, // Evolving items (0=no 1=evolving, lore group, level) 
+         1, Item->loregroup, (Item->id % 10) + 1, // Evolving items (0=no 1=evolving, lore group, level) 
 		 0, // Item->icon,
          hash, // Item hash 
-         Item->name); 
-   } 
-   else 
-   { 
+         Item->name);
+   }
+   else
+   {
       // Non-evolving 
-      sprintf_s(cLink, "\x12%d%05X%05X%05X%05X%05X%05X%06X%1d%04X%1X%05X%08X%s\x12", 
-         0, 
-         Item->id, 
+      sprintf_s(cLink, "\x12%d%05X%05X%05X%05X%05X%05X%06X%1d%04X%1X%05X%08X%s\x12",
+         0,
+         Item->id,
          0, 0, 0, 0, 0, // Augs 
 		 0, // New field in CoF
          0, 0, 0, // Evolving items (0=no 1=evolving, lore group, level) 
 		 0, // Item->icon,
          hash, // Item hash 
-         Item->name); 
+         Item->name);
    } 
-} 
+}
+#endif
+
+#pragma warning( disable:4244 ) // warning C4244: 'conversion' conversion from 'type1' to 'type2', possible loss of data
+// SODEQ converter
+typedef struct {
+	int  itemclass;
+	char name[ITEM_NAME_LEN];
+	char lore[LORE_NAME_LEN];
+	char idfile[0x20];
+	char lorefile[255];
+	long id;
+	long weight;
+	short norent;
+	short nodrop;
+	short attuneable;
+	short size;
+	short slots;
+	long price;
+	long icon;
+	int benefitflag;
+	short tradeskills;
+	short cr;
+	short dr;
+	short pr;
+	short mr;
+	short fr;
+	short svcorruption;
+	short astr;
+	short asta;
+	short aagi;
+	short adex;
+	short acha;
+	short aint;
+	short awis;
+	long hp;
+	long mana;
+	long endur;
+	long ac;
+	long regen;
+	long manaregen;
+	long enduranceregen;
+	long classes;
+	long races;
+	long deity;
+	long skillmodvalue;
+	long skillmodmax;
+	long skillmodtype;
+	long skillmodextra;
+	long banedmgrace;
+	long banedmgbody;
+	short banedmgraceamt;
+	short banedmgamt;
+	short magic;
+	long foodduration;
+	long reqlevel;
+	long reclevel;
+	short recskill;
+	long bardtype;
+	long bardvalue;
+	short unk002;
+	short unk003;
+	short unk004;
+	short light;
+	short delay;
+	short elemdmgtype;
+	short elemdmgamt;
+	short range;
+	long damage;
+	long color;
+	long prestige;
+	short unk006;
+	short unk007;
+	short unk008;
+	long itemtype;
+	short material;
+	short materialunk1;
+	short elitematerial;
+	short heroforge1;
+	short heroforge2;
+	short sellrate;
+	long extradmgskill;
+	long extradmgamt;
+	long charmfileid;
+	long factionmod1;
+	long factionamt1;
+	long factionmod2;
+	long factionamt2;
+	long factionmod3;
+	long factionamt3;
+	long factionmod4;
+	long factionamt4;
+	char charmfile[0x20];
+	long augtype;
+	long augstricthidden;
+	long augrestrict;
+	long augslot1type;
+	short augslot1visible;
+	long augslot1unk2;
+	long augslot2type;
+	short augslot2visible;
+	long augslot2unk2;
+	long augslot3type;
+	short augslot3visible;
+	long augslot3unk2;
+	long augslot4type;
+	short augslot4visible;
+	long augslot4unk2;
+	long augslot5type;
+	short augslot5visible;
+	long augslot5unk2;
+	long augslot6type;
+	short augslot6visible;
+	long augslot6unk2;
+	short pointtype;
+	long ldontheme;
+	long ldonprice;
+	short ldonsellbackrate;
+	short ldonsold;
+	short bagtype;
+	short bagslots;
+	short bagsize;
+	short bagwr;
+	short booktype;
+	short booklang;
+	char filename[0x1e];
+	long loregroup;
+	short artifactflag;
+	short summoned;
+	long favor;
+	short fvnodrop;
+	long attack;
+	long haste;
+	long guildfavor;
+	long augdistiller;
+	short unk009;
+	short unk010;
+	short nopet;
+	short unk011;
+	//short potionbelt;
+	//short potionbeltslots;
+	long stacksize;
+	short notransfer;
+	short expendablearrow;
+	short unk012;
+	short unk013;
+	short clickeffect;
+	short clicklevel2;
+	short clicktype;
+	short clicklevel;
+	short clickmaxcharges;
+	short clickcasttime;
+	short clickrecastdelay;
+	short clickrecasttype;
+	short clickunk5;
+	short clickname;
+	short clickunk7;
+	short proceffect;
+	short proclevel2;
+	short proctype;
+	short proclevel;
+	short procunk1;
+	short procunk2;
+	short procunk3;
+	short procunk4;
+	short procrate;
+	short procname;
+	short procunk7;
+	short worneffect;
+	short wornlevel2;
+	short worntype;
+	short wornlevel;
+	short wornunk1;
+	short wornunk2;
+	short wornunk3;
+	short wornunk4;
+	short wornunk5;
+	short wornname;
+	short wornunk7;
+	short focuseffect;
+	short focuslevel2;
+	short focustype;
+	short focuslevel;
+	short focusunk1;
+	short focusunk2;
+	short focusunk3;
+	short focusunk4;
+	short focusunk5;
+	short focusname;
+	short focusunk7;
+	short scrolleffect;
+	short scrolllevel2;
+	short scrolltype;
+	short scrolllevel;
+	short scrollunk1;
+	short scrollunk2;
+	short scrollunk3;
+	short scrollunk4;
+	short scrollunk5;
+	short scrollname;
+	short scrollunk7;
+	short bardeffect;
+	short bardlevel2;
+	short bardeffecttype;
+	short bardlevel;
+	short bardunk1;
+	short bardunk2;
+	short bardunk3;
+	short bardunk4;
+	short bardunk5;
+	short bardname;
+	short bardunk7;
+	char unk014[0x40];
+	char unk015[0x40];
+	char unk016[0x40];
+	short unk017;
+	short unk018;
+	short unk019;
+	short unk020;
+	short unk021;
+	short unk022;
+	short scriptfile;
+	short questitemflag;
+	long powersourcecapacity;
+	long purity;
+	short epic;
+	long backstabdmg;
+	long heroic_str;
+	long heroic_int;
+	long heroic_wis;
+	long heroic_agi;
+	long heroic_dex;
+	long heroic_sta;
+	long heroic_cha;
+	short unk029;
+	long healamt;
+	long spelldmg;
+	long clairvoyance;
+	short unk030;
+	short unk031;
+	short unk032;
+	short unk033;
+	short unk034;
+	short unk035;
+	short unk036;
+	short unk037;
+	short heirloom;
+	long placeable;
+	long unk038;
+	short unk039;
+	short unk040;
+	long unk041; // read as double convert by *100
+	long unk042; // read as double convert by *100
+	short unk043;
+	long unk044;
+	char placeablenpcname[0x40];
+	short unk046;
+	long unk047;
+	short unk048;
+	short unk049;
+	long unk050; // read as double convert by *100
+	short unk051;
+	short unk052;
+	short unk053;
+	short unk054;
+	short unk055;
+	short unk056;
+	short unk057;
+	short unk058;
+	short unk059;
+	short unk060;
+	short unk061;
+	short unk062;
+	char unk063[0x40];
+	short collectible;
+	short nodestroy;
+	short nonpc;
+	short nozone;
+	short unk068;
+	short unk069;
+	short unk070;
+	short unk071;
+	short noground;
+	short unk073;
+	short marketplace;
+	short freestorage;
+	short unk076;
+	short unk077;
+	short unk078;
+	short unk079;
+	short evolving;
+	long evoid;
+	long evolvinglevel;
+	long evomax;
+	short convertable;
+	long convertid;
+	char convertname[ITEM_NAME_LEN];
+	
+	short updated;
+	short created;
+	char submitter[255];
+	short verified;
+	char verifiedby[255];
+	char collectversion[0x20];
+} SODEQITEM, *PSODEQITEM;
 
 // 
-// static int ConvertItemsDotTxt (void) 
+// void SODEQSetField (PSODEQITEM Item, int iField, const char * cField) 
 // 
-static int ConvertItemsDotTxt (void) 
-{ 
-   WriteChatf ("MQ2LinkDB: Importing items.txt..."); 
+void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
+{
+	int lValue = atol(cField);
+	double dValue = atof(cField);
+	bool bValue = lValue > 0;
+	switch (iField) {
+	case   0: Item->itemclass = lValue; break;
+	case   1: strcpy_s(Item->name, cField); break;
+	case   2: strcpy_s(Item->lore, cField); break;
+	case   3: strcpy_s(Item->idfile, cField); break;
+	case   4: strcpy_s(Item->lorefile, cField); break;
+	case   5: Item->id = lValue; break;
+	case   6: Item->weight = lValue; break;
+	case   7: Item->norent = bValue; break;
+	case   8: Item->nodrop = bValue; break;
+	case   9: Item->attuneable = bValue; break;
+	case  10: Item->size = lValue; break;
+	case  11: Item->slots = lValue; break;
+	case  12: Item->price = lValue; break;
+	case  13: Item->icon = lValue; break;
+	case  14: Item->benefitflag = lValue; break;
+	case  15: Item->tradeskills = bValue; break;
+	case  16: Item->cr = lValue; break;
+	case  17: Item->dr = lValue; break;
+	case  18: Item->pr = lValue; break;
+	case  19: Item->mr = lValue; break;
+	case  20: Item->fr = lValue; break;
+	case  21: Item->svcorruption = lValue; break;
+	case  22: Item->astr = lValue; break;
+	case  23: Item->asta = lValue; break;
+	case  24: Item->aagi = lValue; break;
+	case  25: Item->adex = lValue; break;
+	case  26: Item->acha = lValue; break;
+	case  27: Item->aint = lValue; break;
+	case  28: Item->awis = lValue; break;
+	case  29: Item->hp = lValue; break;
+	case  30: Item->mana = lValue; break;
+	case  31: Item->endur = lValue; break;
+	case  32: Item->ac = lValue; break;
+	case  33: Item->regen = lValue; break;
+	case  34: Item->manaregen = lValue; break;
+	case  35: Item->enduranceregen = lValue; break;
+	case  36: Item->classes = lValue; break;
+	case  37: Item->races = lValue; break;
+	case  38: Item->deity = lValue; break;
+	case  39: Item->skillmodvalue = lValue; break;
+	case  40: Item->skillmodmax = lValue; break;
+	case  41: Item->skillmodtype = lValue; break;
+	case  42: Item->skillmodextra = lValue; break;
+	case  43: Item->banedmgrace = lValue; break;
+	case  44: Item->banedmgbody = lValue; break;
+	case  45: Item->banedmgraceamt = lValue; break;
+	case  46: Item->banedmgamt = lValue; break;
+	case  47: Item->magic = lValue; break;
+	case  48: Item->foodduration = lValue; break;
+	case  49: Item->reqlevel = lValue; break;
+	case  50: Item->reclevel = lValue; break;
+	case  51: Item->recskill = lValue; break;
+	case  52: Item->bardtype = lValue; break;
+	case  53: Item->bardvalue = lValue; break;
+	case  54: Item->unk002 = lValue; break;
+	case  55: Item->unk003 = lValue; break;
+	case  56: Item->unk004 = lValue; break;
+	case  57: Item->light = lValue; break;
+	case  58: Item->delay = lValue; break;
+	case  59: Item->elemdmgtype = lValue; break;
+	case  60: Item->elemdmgamt = lValue; break;
+	case  61: Item->range = lValue; break;
+	case  62: Item->damage = lValue; break;
+	case  63: Item->color = lValue; break;
+	case  64: Item->prestige = lValue; break;
+	case  65: Item->unk006 = lValue; break;
+	case  66: Item->unk007 = lValue; break;
+	case  67: Item->unk008 = lValue; break;
+	case  68: Item->itemtype = lValue; break;
+	case  69: Item->material = lValue; break;
+	case  70: Item->materialunk1 = lValue; break;
+	case  71: Item->elitematerial = lValue; break;
+	case  72: Item->heroforge1 = lValue; break;
+	case  73: Item->heroforge2 = lValue; break;
+	case  74: Item->sellrate = lValue; break;
+	case  75: Item->extradmgskill = lValue; break;
+	case  76: Item->extradmgamt = lValue; break;
+	case  77: Item->charmfileid = lValue; break;
+	case  78: Item->factionmod1 = lValue; break;
+	case  79: Item->factionamt1 = lValue; break;
+	case  80: Item->factionmod2 = lValue; break;
+	case  81: Item->factionamt2 = lValue; break;
+	case  82: Item->factionmod3 = lValue; break;
+	case  83: Item->factionamt3 = lValue; break;
+	case  84: Item->factionmod4 = lValue; break;
+	case  85: Item->factionamt4 = lValue; break;
+	case  86: strcpy_s(Item->charmfile, cField); break;
+	case  87: Item->augtype = lValue; break;
+	case  88: Item->augstricthidden = lValue; break;
+	case  89: Item->augrestrict = lValue; break;
+	case  90: Item->augslot1type = lValue; break;
+	case  91: Item->augslot1visible = lValue; break;
+	case  92: Item->augslot1unk2 = lValue; break;
+	case  93: Item->augslot2type = lValue; break;
+	case  94: Item->augslot2visible = lValue; break;
+	case  95: Item->augslot2unk2 = lValue; break;
+	case  96: Item->augslot3type = lValue; break;
+	case  97: Item->augslot3visible = lValue; break;
+	case  98: Item->augslot3unk2 = lValue; break;
+	case  99: Item->augslot4type = lValue; break;
+	case 100: Item->augslot4visible = lValue; break;
+	case 101: Item->augslot4unk2 = lValue; break;
+	case 102: Item->augslot5type = lValue; break;
+	case 103: Item->augslot5visible = lValue; break;
+	case 104: Item->augslot5unk2 = lValue; break;
+	case 105: Item->augslot6type = lValue; break;
+	case 106: Item->augslot6visible = lValue; break;
+	case 107: Item->augslot6unk2 = lValue; break;
+	case 108: Item->pointtype = lValue; break;
+	case 109: Item->ldontheme = lValue; break;
+	case 110: Item->ldonprice = lValue; break;
+	case 111: Item->ldonsellbackrate = lValue; break;
+	case 112: Item->ldonsold = lValue; break;
+	case 113: Item->bagtype = lValue; break;
+	case 114: Item->bagslots = lValue; break;
+	case 115: Item->bagsize = lValue; break;
+	case 116: Item->bagwr = lValue; break;
+	case 117: Item->booktype = lValue; break;
+	case 118: Item->booklang = lValue; break;
+	case 119: strcpy_s(Item->filename, cField); break;
+	case 120: Item->loregroup = lValue; break;
+	case 121: Item->artifactflag = bValue; break;
+	case 122: Item->summoned = bValue; break;
+	case 123: Item->favor = lValue; break;
+	case 124: Item->fvnodrop = bValue; break;
+	case 125: Item->attack = lValue; break;
+	case 126: Item->haste = lValue; break;
+	case 127: Item->guildfavor = lValue; break;
+	case 128: Item->augdistiller = lValue; break;
+	case 129: Item->unk009 = lValue; break;
+	case 130: Item->unk010 = lValue; break;
+	case 131: Item->nopet = lValue; break;
+	case 132: Item->unk011 = lValue; break;
+	//case 133: Item->potionbelt = lValue; break;
+	//case 134: Item->potionbeltslots = lValue; break;
+	case 133: Item->stacksize = lValue; break;
+	case 134: Item->notransfer = bValue; break;
+	case 135: Item->expendablearrow = lValue; break;
+	case 136: Item->unk012 = lValue; break;
+	case 137: Item->unk013 = lValue; break;
+	case 138: Item->clickeffect = lValue; break;
+	case 139: Item->clicklevel2 = lValue; break;
+	case 140: Item->clicktype = lValue; break;
+	case 141: Item->clicklevel = lValue; break;
+	case 142: Item->clickmaxcharges = lValue; break;
+	case 143: Item->clickcasttime = lValue; break;
+	case 144: Item->clickrecastdelay = lValue; break;
+	case 145: Item->clickrecasttype = lValue; break;
+	case 146: Item->clickunk5 = lValue; break;
+	case 147: Item->clickname = lValue; break;
+	case 148: Item->clickunk7 = lValue; break;
+	case 149: Item->proceffect = lValue; break;
+	case 150: Item->proclevel2 = lValue; break;
+	case 151: Item->proctype = lValue; break;
+	case 152: Item->proclevel = lValue; break;
+	case 153: Item->procunk1 = lValue; break;
+	case 154: Item->procunk2 = lValue; break;
+	case 155: Item->procunk3 = lValue; break;
+	case 156: Item->procunk4 = lValue; break;
+	case 157: Item->procrate = lValue; break;
+	case 158: Item->procname = lValue; break;
+	case 159: Item->procunk7 = lValue; break;
+	case 160: Item->worneffect = lValue; break;
+	case 161: Item->wornlevel2 = lValue; break;
+	case 162: Item->worntype = lValue; break;
+	case 163: Item->wornlevel = lValue; break;
+	case 164: Item->wornunk1 = lValue; break;
+	case 165: Item->wornunk2 = lValue; break;
+	case 166: Item->wornunk3 = lValue; break;
+	case 167: Item->wornunk4 = lValue; break;
+	case 168: Item->wornunk5 = lValue; break;
+	case 169: Item->wornname = lValue; break;
+	case 170: Item->wornunk7 = lValue; break;
+	case 171: Item->focuseffect = lValue; break;
+	case 172: Item->focuslevel2 = lValue; break;
+	case 173: Item->focustype = lValue; break;
+	case 174: Item->focuslevel = lValue; break;
+	case 175: Item->focusunk1 = lValue; break;
+	case 176: Item->focusunk2 = lValue; break;
+	case 177: Item->focusunk3 = lValue; break;
+	case 178: Item->focusunk4 = lValue; break;
+	case 179: Item->focusunk5 = lValue; break;
+	case 180: Item->focusname = lValue; break;
+	case 181: Item->focusunk7 = lValue; break;
+	case 182: Item->scrolleffect = lValue; break;
+	case 183: Item->scrolllevel2 = lValue; break;
+	case 184: Item->scrolltype = lValue; break;
+	case 185: Item->scrolllevel = lValue; break;
+	case 186: Item->scrollunk1 = lValue; break;
+	case 187: Item->scrollunk2 = lValue; break;
+	case 188: Item->scrollunk3 = lValue; break;
+	case 189: Item->scrollunk4 = lValue; break;
+	case 190: Item->scrollunk5 = lValue; break;
+	case 191: Item->scrollname = lValue; break;
+	case 192: Item->scrollunk7 = lValue; break;
+	case 193: Item->bardeffect = lValue; break;
+	case 194: Item->bardlevel2 = lValue; break;
+	case 195: Item->bardeffecttype = lValue; break;
+	case 196: Item->bardlevel = lValue; break;
+	case 197: Item->bardunk1 = lValue; break;
+	case 198: Item->bardunk2 = lValue; break;
+	case 199: Item->bardunk3 = lValue; break;
+	case 200: Item->bardunk4 = lValue; break;
+	case 201: Item->bardunk5 = lValue; break;
+	case 202: Item->bardname = lValue; break;
+	case 203: Item->bardunk7 = lValue; break;
+	case 204: strcpy_s(Item->unk014, cField); break;
+	case 205: strcpy_s(Item->unk015, cField); break;
+	case 206: strcpy_s(Item->unk016, cField); break;
+	case 207: Item->unk017 = lValue; break;
+	case 208: Item->unk018 = lValue; break;
+	case 209: Item->unk019 = lValue; break;
+	case 210: Item->unk020 = lValue; break;
+	case 211: Item->unk021 = lValue; break;
+	case 212: Item->unk022 = lValue; break;
+	case 213: Item->scriptfile = lValue; break;
+	case 214: Item->questitemflag = bValue; break;
+	case 215: Item->powersourcecapacity = lValue; break;
+	case 216: Item->purity = lValue; break;
+	case 217: Item->epic = lValue; break;
+	case 218: Item->backstabdmg = lValue; break;
+	case 219: Item->heroic_str = lValue; break;
+	case 220: Item->heroic_int = lValue; break;
+	case 221: Item->heroic_wis = lValue; break;
+	case 222: Item->heroic_agi = lValue; break;
+	case 223: Item->heroic_dex = lValue; break;
+	case 224: Item->heroic_sta = lValue; break;
+	case 225: Item->heroic_cha = lValue; break;
+	case 226: Item->unk029 = lValue; break;
+	case 227: Item->healamt = lValue; break;
+	case 228: Item->spelldmg = lValue; break;
+	case 229: Item->clairvoyance = lValue; break;
+	case 230: Item->unk030 = lValue; break;
+	case 231: Item->unk031 = lValue; break;
+	case 232: Item->unk032 = lValue; break;
+	case 233: Item->unk033 = lValue; break;
+	case 234: Item->unk034 = lValue; break;
+	case 235: Item->unk035 = lValue; break;
+	case 236: Item->unk036 = lValue; break;
+	case 237: Item->unk037 = lValue; break;
+	case 238: Item->heirloom = bValue; break;
+	case 239: Item->placeable = lValue; break;
+	case 240: Item->unk038 = lValue; break;
+	case 241: Item->unk039 = lValue; break;
+	case 242: Item->unk040 = lValue; break;
+	case 243: Item->unk041 = dValue * 100; break;
+	case 244: Item->unk042 = dValue * 100; break;
+	case 245: Item->unk043 = lValue; break;
+	case 246: Item->unk044 = lValue; break;
+	case 247: strcpy_s(Item->placeablenpcname, cField); break;
+	case 248: Item->unk046 = lValue; break;
+	case 249: Item->unk047 = lValue; break;
+	case 250: Item->unk048 = lValue; break;
+	case 251: Item->unk049 = lValue; break;
+	case 252: Item->unk050 = dValue * 100; break;
+	case 253: Item->unk051 = lValue; break;
+	case 254: Item->unk052 = lValue; break;
+	case 255: Item->unk053 = lValue; break;
+	case 256: Item->unk054 = lValue; break;
+	case 257: Item->unk055 = lValue; break;
+	case 258: Item->unk056 = lValue; break;
+	case 259: Item->unk057 = lValue; break;
+	case 260: Item->unk058 = lValue; break;
+	case 261: Item->unk059 = lValue; break;
+	case 262: Item->unk060 = lValue; break;
+	case 263: Item->unk061 = lValue; break;
+	case 264: Item->unk062 = lValue; break;
+	case 265: strcpy_s(Item->unk063, cField); break;
+	case 266: Item->collectible = bValue; break;
+	case 267: Item->nodestroy = bValue; break;
+	case 268: Item->nonpc = bValue; break;
+	case 269: Item->nozone = bValue; break;
+	case 270: Item->unk068 = lValue; break;
+	case 271: Item->unk069 = lValue; break;
+	case 272: Item->unk070 = lValue; break;
+	case 273: Item->unk071 = lValue; break;
+	case 274: Item->noground = lValue; break;
+	case 275: Item->unk073 = lValue; break;
+	case 276: Item->marketplace = lValue; break;
+	case 277: Item->freestorage = lValue; break;
+	case 278: Item->unk076 = lValue; break;
+	case 279: Item->unk077 = lValue; break;
+	case 280: Item->unk078 = lValue; break;
+	case 281: Item->unk079 = lValue; break;
+	case 282: Item->evolving = bValue; break;
+	case 283: Item->evoid = lValue; break;
+	case 284: Item->evolvinglevel = lValue; break;
+	case 285: Item->evomax = lValue; break;
+	case 286: Item->convertable = lValue; break;
+	case 287: Item->convertid = lValue; break;
+	case 288: strcpy_s(Item->convertname, cField); break;
 
-   char cFilename[MAX_PATH]; 
-   sprintf_s(cFilename,"%s\\items.txt", gszINIPath); 
-   FILE * File = 0;
-   errno_t err = fopen_s(&File,cFilename, "rt");
-   if (!err) { 
-      char cFilename2[MAX_PATH]; 
-      sprintf_s(cFilename2, "%s\\MQ2LinkDB.txt", gszINIPath); 
-	  FILE * LinkFile = 0;
-	  err = fopen_s(&LinkFile, cFilename2, "wt");
+	case 289: Item->updated = lValue; break;
+	case 290: Item->created = lValue; break;
+	case 291: strcpy_s(Item->submitter, cField); break;
+	case 292: Item->verified = lValue; break;
+	case 293: strcpy_s(Item->verifiedby, cField); break;
+	case 294: strcpy_s(Item->collectversion, cField); break;
+	}
+}
 
-      if (!err) { 
-         if (abPresent != NULL) { 
-            bKnowTotal = false; 
-            free (abPresent); 
-            abPresent = NULL; 
-         } 
+// 
+// void SODEQReadItem (char * cLine) 
+// 
+static void SODEQReadItem(PSODEQITEM Item, char * cLine)
+{
+	char * cPtr = cLine;
+	int iField = 0;
 
-         WriteChatf ("MQ2LinkDB: Generating links..."); 
-		 char cLine[MAX_STRING] = { 0 };
+	while (*cPtr) {
+		char cField[256];
+		char * cDest = cField;
+		bool bEscape = false;
 
-         bool bFirst = true;; 
-         int iCount = 0; 
-         while (fgets (cLine, MAX_STRING, File) != NULL) { 
-            cLine[strlen (cLine) - 1] = '\0'; 
+		//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
+		while ((*cPtr != '|' || bEscape) && *cPtr != '\0') {
+			if (bEscape) bEscape = !bEscape; else bEscape = *cPtr == '\\';
+			if (bEscape) { cPtr++; /*DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);*/ continue; }
+			*(cDest++) = *(cPtr++);
+			//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
+		}
+		*cDest = '\0';
+		cPtr++;
 
-            if (bFirst) { 
-               // Small sanity check on file 
-               char * cCheck = "items.itemclass|items.name|items.lore|items.lorefile|items.idfile|items.id|items.weight|items.norent|items.nodrop|items.size|items.slots|items.price"; 
-               if (memcmp (cLine, cCheck, strlen (cCheck)) != 0) { 
-                  WriteChatf ("MQ2LinkDB: \arInvalid items.txt file. Aborting", iCount); 
-                  break; 
-               } 
+		//WriteChatf("cField: %s", cField); 
+		SODEQSetField(Item, iField++, cField);
+	}
+}
+PCONTENTS FindFirstItem()
+{
+	PCHARINFO2 pChar2 = GetCharInfo2();
 
-               bFirst = false; 
-            } else { 
-               EQITEM Item; 
-               memset (&Item, 0, sizeof (Item)); 
-               ReadItem (&Item, cLine); 
+	//check cursor
+	if (pChar2 && pChar2->pInventoryArray && pChar2->pInventoryArray->Inventory.Cursor) {
+		return pChar2->pInventoryArray->Inventory.Cursor;
+	}
 
-			   if (Item.id) {
-		          char cLink[256]; 
-                  MakeLink (&Item, cLink); 
+	//check toplevel slots
+	if (pChar2 && pChar2->pInventoryArray && pChar2->pInventoryArray->InventoryArray) {
+		for (unsigned long nSlot = 0; nSlot < NUM_INV_SLOTS; nSlot++) {
+			if (PCONTENTS pItem = pChar2->pInventoryArray->InventoryArray[nSlot]) {
+				return pItem;
+			}
+		}
+	}
 
-                  //WriteChatf("Test ItemID: %d", ItemID(cLink)); 
+	//check the bags
+	if (pChar2 && pChar2->pInventoryArray) {
+		for (unsigned long nPack = 0; nPack < 10; nPack++) {
+			if (PCONTENTS pPack = pChar2->pInventoryArray->Inventory.Pack[nPack]) {
+				return pPack;
+			}
+		}
+	}
 
-                  fprintf (LinkFile, "%s\n", cLink); 
-                  iCount++; 
-			   }
-            } 
-         } 
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	PCHARINFO pChar = GetCharInfo();
+	//still not found? fine... check mount keyring
+#ifdef NEWCHARINFO
+	if (pChar) {
+		for (unsigned long nSlot = 0; nSlot < pChar->MountKeyRingItems.Items.Size; nSlot++) {
+			if (PCONTENTS pItem = pChar->MountKeyRingItems.Items[nSlot].pObject) {
+#else
+	if (pChar && pChar->pMountsArray && pChar->pMountsArray->Mounts) {
+		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
+			if (PCONTENTS pItem = pChar->pMountsArray->Mounts[nSlot]) {
+#endif
+				return pItem;
+			}
+		}
+	}
 
-         WriteChatf ("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount); 
+	//still not found? fine... check illusions keyring
+#ifdef NEWCHARINFO
+	if (pChar) {
+		for (unsigned long nSlot = 0; nSlot < pChar->IllusionKeyRingItems.Items.Size; nSlot++) {
+			if (PCONTENTS pItem = pChar->IllusionKeyRingItems.Items[nSlot].pObject) {
+#else
+	if (pChar && pChar->pIllusionsArray && pChar->pIllusionsArray->Illusions) {
+		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
+			if (PCONTENTS pItem = pChar->pIllusionsArray->Illusions[nSlot]) {
+#endif
+				return pItem;
+			}
+		}
+	}
 
-         fclose (LinkFile); 
-      } else { 
-         WriteChatf ("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno); 
-      } 
+	//still not found? fine... check familiars keyring
+#ifdef NEWCHARINFO
+	if (pChar) {
+		for (unsigned long nSlot = 0; nSlot < pChar->FamiliarKeyRingItems.Items.Size; nSlot++) {
+			if (PCONTENTS pItem = pChar->FamiliarKeyRingItems.Items[nSlot].pObject) {
+#else
+	if (pChar && pChar->pFamiliarArray && pChar->pFamiliarArray->Familiars) {
+		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
+			if (PCONTENTS pItem = pChar->pFamiliarArray->Familiars[nSlot]) {
+#endif
+				return pItem;
+			}
+		}
+	}
+#endif
+	return 0;
+}
+template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&cLink)[_Size])
+{
+	PCHARINFO2 pCharInfo = NULL;
+	PITEMINFO pItemInfo = NULL;
+	PCONTENTS pCursor = NULL;
+	PCONTENTS pCursorOrg = NULL;
 
-      fclose (File); 
-   } else { 
-      WriteChatf ("MQ2LinkDB: \arSource file not found (items.txt)"); 
-   } 
+	if (NULL == (pCharInfo = GetCharInfo2())) return;
+	if (NULL == (pCursorOrg = FindFirstItem()))
+	{
+		WriteChatf("/link /import only works if you have at least 1 item in your inventory or a keyring");
+		return;
+	}
+	
+	pCursor = (PCONTENTS)LocalAlloc(LPTR, sizeof(CONTENTS));
+	pCursor->vtable = pCursorOrg->vtable;
+	pCursor->RefCount = pCursorOrg->RefCount;
+	pCursor->punknown = pCursorOrg->punknown;
+	pCursor->Item1 = 0;
+	pCursor->Luck = 0;
+	pCursor->Contents.bDynamic = pCursorOrg->Contents.bDynamic;
+	pCursor->Contents = pCursorOrg->Contents;
 
-   return 0; 
-} 
+	pCursor->GlobalIndex = pCursorOrg->GlobalIndex;
+	pCursor->RealEstateArray = pCursorOrg->RealEstateArray;
+	pCursor->DontKnow = pCursorOrg->DontKnow;
+
+	pItemInfo = (PITEMINFO)LocalAlloc(LPTR, sizeof(ITEMINFO));
+	//pItemInfo = GetItemFromContents(pCursor);
+
+	strcpy_s(pItemInfo->Name, Item->name);
+	strcpy_s(pItemInfo->LoreName, Item->lore);
+	//strcpy_s(pItemInfo->AdvancedLoreName, );
+	memset(&pItemInfo->AdvancedLoreName, 0, sizeof(pItemInfo->AdvancedLoreName));
+	strcpy_s(pItemInfo->IDFile, Item->idfile);
+	//strcpy_s(pItemInfo->IDFile2, );
+	memset(&pItemInfo->IDFile2, 0, sizeof(pItemInfo->IDFile2));
+	pItemInfo->ItemNumber = Item->id;
+	pItemInfo->EquipSlots = Item->slots;
+	pItemInfo->Cost = Item->price;
+	pItemInfo->IconNumber = Item->icon;
+	pItemInfo->eGMRequirement = 0;
+	pItemInfo->bPoofOnDeath = 0;
+	pItemInfo->Weight = Item->weight;
+	pItemInfo->NoRent = Item->norent;
+	pItemInfo->NoDrop = Item->notransfer;
+	pItemInfo->Attuneable = Item->attuneable;
+	pItemInfo->Heirloom = Item->heirloom;
+	pItemInfo->Collectible = Item->collectible;
+	pItemInfo->NoDestroy = Item->nodestroy;
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	pItemInfo->bNoNPC = Item->nonpc;
+#endif
+	pItemInfo->NoZone = 0;
+	pItemInfo->MakerID = 0;
+	pItemInfo->NoGround = 0;
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	pItemInfo->bNoLoot = 0;
+#endif
+	pItemInfo->MarketPlace = 0;
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	pItemInfo->bFreeSlot = 0;
+	pItemInfo->bAutoUse = 0;
+	pItemInfo->Unknown0x0118 = 0;
+	pItemInfo->LoreEquipped = 1;
+#endif
+	pItemInfo->Size = Item->size;
+	pItemInfo->Type = Item->itemclass;
+	pItemInfo->TradeSkills = Item->tradeskills;
+	pItemInfo->Lore = (Item->loregroup == 0 ? 0 : 1);
+	pItemInfo->Artifact = Item->artifactflag;
+	pItemInfo->Summoned = Item->summoned;
+	pItemInfo->SvCold = Item->cr;
+	pItemInfo->SvFire = Item->fr;
+	pItemInfo->SvMagic = Item->mr;
+	pItemInfo->SvDisease = Item->dr;
+	pItemInfo->SvPoison = Item->pr;
+	pItemInfo->SvCorruption = Item->svcorruption;
+	pItemInfo->STR = Item->astr;
+	pItemInfo->STA = Item->asta;
+	pItemInfo->AGI = Item->aagi;
+	pItemInfo->DEX = Item->adex;
+	pItemInfo->CHA = Item->acha;
+	pItemInfo->INT = Item->aint;
+	pItemInfo->WIS = Item->awis;
+	//pItemInfo->HitPoints = 0;
+	pItemInfo->HP = Item->hp;
+	pItemInfo->Mana = Item->mana;
+	pItemInfo->AC = Item->ac;
+	pItemInfo->RequiredLevel = Item->reqlevel;
+	pItemInfo->RecommendedLevel = Item->reclevel;
+	pItemInfo->RecommendedSkill = Item->recskill;
+	pItemInfo->SkillModType = Item->skillmodtype;
+	pItemInfo->SkillModValue = Item->skillmodvalue;
+	pItemInfo->SkillModMax = Item->skillmodmax;
+	pItemInfo->SkillModBonus = Item->skillmodextra;
+	pItemInfo->BaneDMGRace = Item->banedmgrace;
+	pItemInfo->BaneDMGBodyType = Item->banedmgbody;
+	pItemInfo->BaneDMGBodyTypeValue = Item->banedmgamt;
+	pItemInfo->BaneDMGRaceValue = Item->banedmgraceamt;
+	pItemInfo->InstrumentType = Item->bardtype;
+	pItemInfo->InstrumentMod = Item->bardvalue;
+	pItemInfo->Classes = Item->classes;
+	pItemInfo->Races = Item->races;
+	pItemInfo->Diety = Item->deity;
+	pItemInfo->MaterialTintIndex = 0;
+	pItemInfo->Magic = Item->magic;
+	pItemInfo->Light = Item->light;
+	pItemInfo->Delay = Item->delay;
+	pItemInfo->ElementalFlag = Item->elemdmgtype;
+	pItemInfo->ElementalDamage = Item->elemdmgamt;
+	pItemInfo->Range = Item->range;
+	pItemInfo->Damage = Item->damage;
+	pItemInfo->BackstabDamage = Item->backstabdmg;
+	pItemInfo->HeroicSTR = Item->heroic_str;
+	pItemInfo->HeroicINT = Item->heroic_int;
+	pItemInfo->HeroicWIS = Item->heroic_wis;
+	pItemInfo->HeroicAGI = Item->heroic_agi;
+	pItemInfo->HeroicDEX = Item->heroic_dex;
+	pItemInfo->HeroicSTA = Item->heroic_sta;
+	pItemInfo->HeroicCHA = Item->heroic_cha;
+#if defined(ROF2EMU) || defined(UFEMU)
+	pItemInfo->HeroicSvMagic = 0;
+	pItemInfo->HeroicSvFire = 0;
+	pItemInfo->HeroicSvCold = 0;
+	pItemInfo->HeroicSvDisease = 0;
+	pItemInfo->HeroicSvPoison = 0;
+	pItemInfo->HeroicSvCorruption = 0;
+#endif
+	pItemInfo->HealAmount = Item->healamt;
+	pItemInfo->SpellDamage = Item->spelldmg;
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	pItemInfo->MinLuck = 0;
+	pItemInfo->MaxLuck = 0;
+#endif
+	pItemInfo->Prestige = Item->prestige;
+	pItemInfo->ItemType = Item->itemtype;
+	pItemInfo->ArmorProps.Type = 0;
+	pItemInfo->ArmorProps.Variation = 0;
+	pItemInfo->ArmorProps.Material = Item->material;
+	pItemInfo->ArmorProps.NewArmorID = 0;
+	pItemInfo->ArmorProps.NewArmorType = 0;
+	pItemInfo->AugData.Sockets[0].Type = Item->augslot1type;
+	pItemInfo->AugData.Sockets[0].bVisible = Item->augslot1unk2;
+	pItemInfo->AugData.Sockets[0].bInfusible = 0;
+	pItemInfo->AugData.Sockets[1].Type = Item->augslot2type;
+	pItemInfo->AugData.Sockets[1].bVisible = Item->augslot2unk2;
+	pItemInfo->AugData.Sockets[1].bInfusible = 0;
+	pItemInfo->AugData.Sockets[2].Type = Item->augslot3type;
+	pItemInfo->AugData.Sockets[2].bVisible = Item->augslot3unk2;
+	pItemInfo->AugData.Sockets[2].bInfusible = 0;
+	pItemInfo->AugData.Sockets[3].Type = Item->augslot4type;
+	pItemInfo->AugData.Sockets[3].bVisible = Item->augslot4unk2;
+	pItemInfo->AugData.Sockets[3].bInfusible = 0;
+	pItemInfo->AugData.Sockets[4].Type = Item->augslot5type;
+	pItemInfo->AugData.Sockets[4].bVisible = Item->augslot5unk2;
+	pItemInfo->AugData.Sockets[4].bInfusible = 0;
+	pItemInfo->AugData.Sockets[5].Type = Item->augslot6type;
+	pItemInfo->AugData.Sockets[5].bVisible = Item->augslot6unk2;
+	pItemInfo->AugData.Sockets[5].bInfusible = 0;
+	pItemInfo->AugType = Item->augtype;
+	pItemInfo->AugSkinTypeMask = 0;
+	pItemInfo->AugRestrictions = Item->augrestrict;
+	pItemInfo->SolventItemID = Item->augdistiller;
+	pItemInfo->LDTheme = Item->ldontheme;
+	pItemInfo->LDCost = Item->ldonprice;
+	pItemInfo->LDType = 0;
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	memset(&pItemInfo->Unknown0x022c, 0, sizeof(pItemInfo->Unknown0x022c));
+	memset(&pItemInfo->Unknown0x0230, 0, sizeof(pItemInfo->Unknown0x0230));
+	memset(&pItemInfo->Unknown0x0254, 0, sizeof(pItemInfo->Unknown0x0254));
+#endif
+	strcpy_s(pItemInfo->CharmFile, Item->charmfile);
+	memset(&pItemInfo->Clicky, 0, sizeof(pItemInfo->Clicky));
+	memset(&pItemInfo->Proc, 0, sizeof(pItemInfo->Proc));
+	memset(&pItemInfo->Worn, 0, sizeof(pItemInfo->Worn));
+	memset(&pItemInfo->Focus, 0, sizeof(pItemInfo->Focus));
+	memset(&pItemInfo->Scroll, 0, sizeof(pItemInfo->Scroll));
+	memset(&pItemInfo->Focus2, 0, sizeof(pItemInfo->Focus2));
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	memset(&pItemInfo->Mount, 0, sizeof(pItemInfo->Mount));
+	memset(&pItemInfo->Illusion, 0, sizeof(pItemInfo->Illusion));
+	memset(&pItemInfo->Familiar, 0, sizeof(pItemInfo->Familiar));
+#endif
+	pItemInfo->SkillMask[0] = 0;
+	pItemInfo->SkillMask[1] = 0;
+	pItemInfo->SkillMask[2] = 0;
+	pItemInfo->SkillMask[3] = 0;
+	pItemInfo->SkillMask[4] = 0;
+	pItemInfo->DmgBonusSkill = Item->extradmgskill;
+	pItemInfo->DmgBonusValue = Item->extradmgamt;
+	pItemInfo->CharmFileID = Item->charmfileid;
+	pItemInfo->FoodDuration = Item->foodduration;
+	pItemInfo->Combine = Item->bagtype;
+	pItemInfo->Slots = Item->bagslots;
+	pItemInfo->SizeCapacity = Item->bagsize;
+	pItemInfo->WeightReduction = Item->bagwr;
+	pItemInfo->BookType = Item->booktype;
+	pItemInfo->BookLang = Item->booklang;
+	strcpy_s(pItemInfo->BookFile, Item->filename);
+	pItemInfo->Favor = Item->favor;
+	pItemInfo->GuildFavor = Item->guildfavor;
+	pItemInfo->bIsFVNoDrop = Item->fvnodrop;
+	pItemInfo->Endurance = Item->endur;
+	pItemInfo->Attack = Item->attack;
+	pItemInfo->HPRegen = Item->regen;
+	pItemInfo->ManaRegen = Item->manaregen;
+	pItemInfo->EnduranceRegen = Item->enduranceregen;
+	pItemInfo->Haste = Item->haste;
+	pItemInfo->AnimationOverride = 0;
+	pItemInfo->PaletteTintIndex = 0;
+	//pItemInfo->DamShield = Item->damageshield;
+	pItemInfo->bNoPetGive = Item->nopet;
+	pItemInfo->bSomeProfile = 0;
+	//pItemInfo->bPotionBeltAllowed = 0;
+	//pItemInfo->NumPotionSlots = 0;
+	pItemInfo->SomeIDFlag = 0;
+	pItemInfo->StackSize = Item->stacksize;
+	pItemInfo->bNoStorage = 0;
+	pItemInfo->MaxPower = Item->powersourcecapacity;
+	pItemInfo->Purity = Item->purity;
+	pItemInfo->bIsEpic = 0;
+	pItemInfo->RightClickScriptID = 0;
+	pItemInfo->ItemLaunchScriptID = 0;
+	pItemInfo->QuestItem = Item->questitemflag;
+	pItemInfo->Expendable = Item->expendablearrow;
+	pItemInfo->Clairvoyance = Item->clairvoyance;
+	pItemInfo->SubClass = 0;
+	pItemInfo->bLoginRegReqItem = 0;
+	pItemInfo->Placeable = Item->placeable;
+	pItemInfo->bPlaceableIgnoreCollisions = 0;
+	pItemInfo->PlacementType = 0;
+	pItemInfo->RealEstateDefID = 0;
+	pItemInfo->PlaceableScaleRangeMin = 0;
+	pItemInfo->PlaceableScaleRangeMax = 0;
+	pItemInfo->RealEstateUpkeepID = 0;
+	pItemInfo->MaxPerRealEstate = 0;
+	//strpy_s(pItemInfo->HousepetFileName, );
+	memset(&pItemInfo->HousepetFileName, 0, sizeof(pItemInfo->HousepetFileName));
+	pItemInfo->TrophyBenefitID = 0;
+	pItemInfo->bDisablePlacementRotation = 0;
+	pItemInfo->bDisableFreePlacement = 0;
+	pItemInfo->NpcRespawnInterval = 0;
+	pItemInfo->PlaceableDefScale = 0;
+	pItemInfo->PlaceableDefHeading = 0;
+	pItemInfo->PlaceableDefPitch = 0;
+	pItemInfo->PlaceableDefRoll = 0;
+	pItemInfo->bInteractiveObject = 0;
+	pItemInfo->SocketSubClassCount = 0;
+	pItemInfo->SocketSubClass[0] = 0;
+	pItemInfo->SocketSubClass[1] = 0;
+	pItemInfo->SocketSubClass[2] = 0;
+	pItemInfo->SocketSubClass[3] = 0;
+	pItemInfo->SocketSubClass[4] = 0;
+	pItemInfo->SocketSubClass[5] = 0;
+	pItemInfo->SocketSubClass[6] = 0;
+	pItemInfo->SocketSubClass[7] = 0;
+	pItemInfo->SocketSubClass[8] = 0;
+	pItemInfo->SocketSubClass[9] = 0;
+
+	//pCursor->RefCount = Item->itemtype;
+	pCursor->Price = 0;
+	pCursor->Open = 0;
+	pCursor->Item1 = pItemInfo;
+	memset(&pCursor->ActorTag1, 0, sizeof(pCursor->ActorTag1));
+	pCursor->StackCount = 0;
+	pCursor->LastCastTime = 0;
+	pCursor->Tint = 0;
+	pCursor->MerchantSlot = 0;
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	pCursor->bCollected = 0;
+#endif
+	pCursor->ID = 0;
+	pCursor->ItemHash = 0;
+	pCursor->bItemNeedsUpdate = 0;
+	pCursor->OrnamentationIcon = 0;
+	#if !defined(TEST) && !defined(EQBETA)
+	pCursor->ItemColor = 0;
+	pCursor->IsEvolvingItem = ((Item->evoid > 0 && Item->evoid < 10000) ? 1 : 0);
+	pCursor->EvolvingMaxLevel = Item->evomax;
+	#else
+	bool IsEvolvingItem = ((Item->evoid > 0 && Item->evoid < 10000) ? 1 : 0);
+	if (IsEvolvingItem)
+	{
+		pCursor->pEvolutionData = new ItemEvolutionData;
+		pCursor->pEvolutionData->EvolvingMaxLevel = Item->evomax;
+		pCursor->pEvolutionData->EvolvingExpPct = 0;
+		pCursor->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? Item->evolvinglevel : 0);
+		pCursor->pEvolutionData->GroupID = (IsEvolvingItem ? Item->evoid : (Item->loregroup > 0) ? Item->loregroup & 0xFFFF : 0);
+		pCursor->pEvolutionData->LastEquipped = 0;
+	}
+	#endif
+	pCursor->ScriptIndex = 0;
+	pCursor->ArmorType = -1;
+	memset(&pCursor->RealEstateArray, 0, sizeof(pCursor->RealEstateArray));
+	pCursor->bRealEstateItemPlaceable = 0;
+	pCursor->Charges = 0;
+	pCursor->NoteStatus = 0;
+	memset(&pCursor->Contents, 0, sizeof(pCursor->Contents));
+	pCursor->Power = 0;
+	pCursor->bRankDisabled = 0;
+	pCursor->RealEstateID = -1;
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	pCursor->bConvertable = 0;
+#endif
+	pCursor->bCopied = 0;
+	pCursor->bDisableAugTexture = 0;
+	memset(&pCursor->ItemGUID, 0, sizeof(pCursor->ItemGUID));
+	#if !defined(TEST) && !defined(LIVE) && !defined(EQBETA)
+	pCursor->EvolvingExpOn = 0;
+	#endif
+	#if !defined(TEST) && !defined(EQBETA)
+	pCursor->EvolvingExpPct = 0;
+	pCursor->EvolvingCurrentLevel = (pCursor->IsEvolvingItem ? Item->evolvinglevel : 0);
+	#endif
+	pCursor->MerchantQuantity = 0;
+	pCursor->NewArmorID = 0;
+	memset(&pCursor->ActorTag2, 0, sizeof(pCursor->ActorTag2));
+	#if !defined(TEST) && !defined(EQBETA)
+	pCursor->GroupID = (pCursor->IsEvolvingItem ? Item->evoid : (Item->loregroup > 0) ? Item->loregroup & 0xFFFF : 0);
+	#endif
+	memset(&pCursor->GlobalIndex, 0, sizeof(pCursor->GlobalIndex));
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	pCursor->ConvertItemID = 0;
+#endif
+	pCursor->NoDropFlag = 0;
+	pCursor->AugFlag = 0;
+	#if !defined(TEST) && !defined(EQBETA)
+	pCursor->LastEquipped = 0;
+	#endif
+	pCursor->RespawnTime = 0;
+	//pCursor->Filler1 = 0;
+	//pCursor->Filler2 = 0;
+	pCursor->Item2 = pItemInfo;
+	//pCursor->DontKnow2 = 0;
+	pCursorOrg;
+	GetItemLink(pCursor, cLink);
+	LocalFree(pItemInfo);
+#if defined(TEST) || defined(EQBETA)
+	if (IsEvolvingItem)
+	{
+		pCursor->pEvolutionData.reset();
+	}
+#endif
+	LocalFree(pCursor);
+	//if (!pItemInfo->ItemNumber % 10000)
+		//WriteChatf("MQ2LinkDB:: %d:(%s) %s", pItemInfo->ItemNumber, pItemInfo->Name, cLink);
+}
+
+// 
+// static VOID ConvertItemsDotTxt (void) 
+// 
+static VOID ConvertItemsDotTxt(void)
+{
+	WriteChatf("MQ2LinkDB: Importing items.txt...");
+	DebugSpewAlways("MQ2LinkDB:: Importing items.txt...");
+
+	char cFilename[MAX_PATH];
+	sprintf_s(cFilename, "%s\\items.txt", gszINIPath);
+    FILE * File = 0;
+    errno_t err = fopen_s(&File, cFilename, "rt");
+    if (!err) { 
+	    FILE * LinkFile = 0;
+	    err = fopen_s(&LinkFile, cLinkDBFileName, "wt");
+
+        if (!err) { 
+			if (abPresent != NULL) {
+				bKnowTotal = false;
+				free(abPresent);
+				abPresent = NULL;
+			}
+
+			WriteChatf("MQ2LinkDB: Generating links...");
+			DebugSpewAlways("MQ2LinkDB: Generating links...");
+			char cLine[MAX_STRING * 2] = { 0 };
+			char cLink[MAX_STRING] = { 0 };
+			SODEQITEM SODEQItem;
+
+			bool bFirst = true;;
+			int iCount = 0;
+			while (fgets(cLine, MAX_STRING * 2, File) != NULL) {
+				cLine[strlen(cLine) - 1] = '\0';
+
+				if (bFirst) {
+					// quick sanity check on file
+					int nCheck = strcnt(cLine, '|');
+					if (nCheck != 294) {
+						WriteChatf("MQ2LinkDB: \arInvalid items.txt file. \ay%d\ax fields found. Aborting", nCheck);
+						DebugSpewAlways("MQ2LinkDB: \arInvalid items.txt file. Aborting");
+						break;
+					}
+
+					bFirst = false;
+				}
+				else {
+					memset(&SODEQItem, 0, sizeof(SODEQItem));
+					SODEQReadItem(&SODEQItem, cLine);
+
+					if (SODEQItem.id) {
+						memset(&cLink, 0, sizeof(cLink));
+						SODEQMakeLink(&SODEQItem, cLink);
+
+                        //WriteChatf("Test ItemID[%d]: %d", SODEQItem.id, ItemID(cLink)); 
+
+						fprintf(LinkFile, "%s\n", cLink);
+						iCount++;
+					}
+				}
+			}
+
+			WriteChatf("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount);
+			DebugSpewAlways("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount);
+
+			fclose(LinkFile);
+			fclose(File);
+		}
+		else {
+			WriteChatf("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
+			DebugSpewAlways("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
+		}
+
+		fclose(File);
+	}
+	else {
+		WriteChatf("MQ2LinkDB: \arSource file not found (items.txt)");
+		DebugSpewAlways("MQ2LinkDB: \arSource file not found (items.txt)");
+	}
+
+	return;
+}
