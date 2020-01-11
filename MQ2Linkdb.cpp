@@ -52,6 +52,7 @@
 //
 //
 // Changes: 
+// 3.3 - Eqmule Jan 09 2020 - Fixed a crash when spell links was parsed.
 // 3.2 - Eqmule Jan 08 2020 - Updated to not require an item on cursor to do /link /import and to not poof the item used as the template.
 // 3.1  Updated for new link format on BETA, 11/9/18.
 // 3.0 - Eqmule 07-22-2016 - Added string safety.
@@ -115,8 +116,8 @@
 #include "../MQ2Plugin.h" 
 
 PreSetup("MQ2LinkDB"); 
-PLUGIN_VERSION(3.2); 
-#define MY_STRING    "MQ2LinkDB \ar3.1\ax by Ziggy, modifications by SwiftyMUSE" 
+PLUGIN_VERSION(3.3); 
+#define MY_STRING    "MQ2LinkDB \ar3.3\ax by Ziggy, modifications by SwiftyMUSE" 
 #ifdef ISXEQ
 #define ISINDEX() (argc>0)
 #define ISNUMBER() (IsNumber(argv[0]))
@@ -1200,35 +1201,150 @@ PLUGIN_API VOID ShutdownPlugin(VOID)
 251 a.NO_GROUND
 252 a.NO_LOOT
 */
-
+enum ETagCodes
+{
+	ETAG_ITEM = 0,
+	ETAG_PLAYER,
+	ETAG_SPAM,
+	ETAG_ACHIEVEMENT,
+	ETAG_DIALOG_RESPONSE,
+    ETAG_COMMAND,
+    ETAG_SPELL,		
+	ETAG_COUNT
+};
+const int TagSizes[ETAG_COUNT] = {
+	58,
+	3,
+	3,
+	0,
+	0,
+	0,
+	4,
+};
+#define TAG_CHAR ((char)0x12)
+int GetItemTag(const char *Str, char**Ptr)
+{
+	int ret = -1;
+	CXStr str = Str;
+	for (int i = 0; i < str.GetLength(); i++)
+	{
+		wchar_t ch = str.GetUnicode(i);
+		if(ch == TAG_CHAR)
+		{
+			*Ptr = (char*)&Str[i];
+			int StartIndex = i + 2;
+			int EndIndex = -1;
+			while (StartIndex < str.GetLength())
+			{
+				if (str.GetUnicode(StartIndex) == TAG_CHAR)
+				{
+					EndIndex = StartIndex;
+					break;
+				}
+				StartIndex++;
+			}
+			if (EndIndex == -1)
+			{
+				str.Delete(i, 1);
+				i--;
+				continue;
+			}
+			int tagCode = str.GetUnicode(i + 1) - ((wchar_t)'0');
+			int tagCode2 = str.GetUnicode(i + 2) - ((wchar_t)'0');
+			switch (tagCode)
+			{
+				case ETAG_PLAYER:
+				{
+					ret = ETAG_PLAYER;
+					CXStr pName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
+					if ( pName.GetChar(0) == ':' )
+					{
+						pName.Delete(0, 1);
+					}
+					str.Delete(i, (EndIndex - i) + 1);
+					str.Insert(i, pName);
+					i += pName.GetLength() - 1;
+					break;
+				}
+				case ETAG_SPAM:
+				{
+					ret = ETAG_SPAM;
+					str.Delete(i, (EndIndex - i) + 1);
+					str.Insert(i, "(SPAM)");
+					i += 5;
+					break;
+				}
+				case ETAG_ACHIEVEMENT:
+				{
+					ret = ETAG_ACHIEVEMENT;
+					int iTagSize = i;
+					str.FindNext('\'', iTagSize);
+					iTagSize = iTagSize + 2 - i;
+					CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
+					str.Delete(i, (EndIndex - i) + 1);
+					str.Insert(i, itemName);
+					i += itemName.GetLength() - 1;
+				}
+				break;
+				case ETAG_DIALOG_RESPONSE:
+				{
+					ret = ETAG_DIALOG_RESPONSE;
+					str.Delete(i, 2);
+					str.Delete(EndIndex - 2, 1);
+					i = EndIndex - 3;
+				}
+				break;
+				case ETAG_COMMAND:
+				{
+					ret = ETAG_COMMAND;
+					str.Delete(i, 2);
+					str.Delete(EndIndex - 2, 1);
+					i = EndIndex - 3;
+				}
+				break;
+				case ETAG_SPELL:
+				{
+					if (tagCode2 != 3)
+					{
+						Sleep(0);
+					}
+					ret = ETAG_SPELL;
+					CXStr copy = str;
+					int iTagSize = i;
+					str.FindNext('\'', iTagSize);
+					iTagSize = iTagSize + 2 - i;
+					CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
+					str.Delete(i, (EndIndex - i) + 1);
+					str.Insert( i, itemName );
+					i += itemName.GetLength() - 1;
+				}
+				break;
+				case ETAG_ITEM:
+				{
+					ret = ETAG_ITEM;
+					LinkExtract(*Ptr);
+					CXStr itemName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
+					str.Delete(i, (EndIndex - i) + 1);
+					str.Insert(i, itemName);
+					i += itemName.GetLength() - 1;
+				}
+				break;
+			}
+		}
+	}
+	return ret;
+}
 // This is called every time EQ shows a line of chat with CEverQuest::dsp_chat, 
 // but after MQ filters and chat events are taken care of. 
-PLUGIN_API DWORD OnIncomingChat(PCHAR Line, DWORD Color) 
-{ 
-   //DebugSpew("MQ2LinkDB::OnIncomingChat(%s)",Line); 
-
-   if (bScanChat) { 
-      //DebugSpew("MQ2LinkDB::OnIncomingChat(%s)",Line); 
-      char * cPtr = Line; 
-      if(cPtr[0] == '\x12') { 
-         // move past the linked character name           
-         if ( strchr(&Line[2], ',')) { 
-            cPtr = strchr(&Line[2], ','); 
-         } else { 
-            return 0; 
-         } 
-      }
-	  while (*cPtr) { 
-         if (*cPtr == '\x12') { 
-            cPtr = LinkExtract (cPtr); 
-         } else { 
-            cPtr++; 
-         } 
-      } 
-   } 
-
-   return 0; 
-} 
+PLUGIN_API DWORD OnIncomingChat(PCHAR Line, DWORD Color)
+{
+	//"Soandso hit a venomshell pest for 106012 points of magic damage by \x1263^56723^'Claw of Ellarr\x12."
+	if (bScanChat) {
+		char* cPtr = 0;
+		int tag = GetItemTag(Line, &cPtr);
+	}
+	return 0;
+}
 
 //
 // DB Converter now part of plugin
