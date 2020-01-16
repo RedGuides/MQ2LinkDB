@@ -2438,7 +2438,7 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pCursor->ItemHash = 0;
 	pCursor->bItemNeedsUpdate = 0;
 	pCursor->OrnamentationIcon = 0;
-	#if !defined(TEST) && !defined(EQBETA)
+	#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->ItemColor = 0;
 	pCursor->IsEvolvingItem = ((Item->evoid > 0 && Item->evoid < 10000) ? 1 : 0);
 	pCursor->EvolvingMaxLevel = Item->evomax;
@@ -2473,14 +2473,14 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	#if !defined(TEST) && !defined(LIVE) && !defined(EQBETA)
 	pCursor->EvolvingExpOn = 0;
 	#endif
-	#if !defined(TEST) && !defined(EQBETA)
+	#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->EvolvingExpPct = 0;
 	pCursor->EvolvingCurrentLevel = (pCursor->IsEvolvingItem ? Item->evolvinglevel : 0);
 	#endif
 	pCursor->MerchantQuantity = 0;
 	pCursor->NewArmorID = 0;
 	memset(&pCursor->ActorTag2, 0, sizeof(pCursor->ActorTag2));
-	#if !defined(TEST) && !defined(EQBETA)
+	#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->GroupID = (pCursor->IsEvolvingItem ? Item->evoid : (Item->loregroup > 0) ? Item->loregroup & 0xFFFF : 0);
 	#endif
 	memset(&pCursor->GlobalIndex, 0, sizeof(pCursor->GlobalIndex));
@@ -2489,7 +2489,7 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 #endif
 	pCursor->NoDropFlag = 0;
 	pCursor->AugFlag = 0;
-	#if !defined(TEST) && !defined(EQBETA)
+	#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->LastEquipped = 0;
 	#endif
 	pCursor->RespawnTime = 0;
@@ -2500,7 +2500,7 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pCursorOrg;
 	GetItemLink(pCursor, cLink);
 	LocalFree(pItemInfo);
-#if defined(TEST) || defined(EQBETA)
+#if !defined(ROF2EMU) && !defined(UFEMU)
 	if (IsEvolvingItem)
 	{
 		pCursor->pEvolutionData.reset();
