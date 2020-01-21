@@ -1213,7 +1213,8 @@ enum ETagCodes
 	ETAG_COUNT
 };
 const int TagSizes[ETAG_COUNT] = {
-	58,
+	//58,
+	93,
 	3,
 	3,
 	0,
@@ -1231,7 +1232,7 @@ int GetItemTag(const char *Str, char**Ptr)
 		wchar_t ch = str.GetUnicode(i);
 		if(ch == TAG_CHAR)
 		{
-			*Ptr = (char*)&Str[i];
+			*Ptr = (char*)&str.Ptr->Text[i];
 			int StartIndex = i + 2;
 			int EndIndex = -1;
 			while (StartIndex < str.GetLength())
@@ -1322,7 +1323,7 @@ int GetItemTag(const char *Str, char**Ptr)
 				case ETAG_ITEM:
 				{
 					ret = ETAG_ITEM;
-					LinkExtract(*Ptr);
+					char *NewPtr = LinkExtract(*Ptr);
 					CXStr itemName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
 					str.Delete(i, (EndIndex - i) + 1);
 					str.Insert(i, itemName);
@@ -1340,8 +1341,11 @@ PLUGIN_API DWORD OnIncomingChat(PCHAR Line, DWORD Color)
 {
 	//"Soandso hit a venomshell pest for 106012 points of magic damage by \x1263^56723^'Claw of Ellarr\x12."
 	if (bScanChat) {
-		char* cPtr = 0;
-		int tag = GetItemTag(Line, &cPtr);
+		if (strchr(Line, TAG_CHAR))
+		{
+			char* cPtr = 0;
+			int tag = GetItemTag(Line, &cPtr);
+		}
 	}
 	return 0;
 }
