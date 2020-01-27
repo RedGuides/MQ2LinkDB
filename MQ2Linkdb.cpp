@@ -594,7 +594,6 @@ template <unsigned int _Size>static void DoParameters (CHAR(&cParams)[_Size])
    while (cWord != NULL) { 
       if (strcmp (cWord, "/quiet") == 0) { 
          bQuietMode = !bQuietMode; 
-
          WriteChatf ("MQ2LinkDB: Quiet mode \ay%s\ax", bQuietMode ? "on" : "off"); 
          bAnyParams = true; 
 
@@ -614,39 +613,46 @@ template <unsigned int _Size>static void DoParameters (CHAR(&cParams)[_Size])
 		  bAnyParams = true;
 	  }
 	  else if (strcmp(cWord, "/click") == 0) {
-         cWord = strtok_s(NULL, " ", &next_token1);
-
-         if (_stricmp(cWord, "on") == 0 || 
-            _stricmp(cWord, "yes") == 0 || 
-            _stricmp(cWord, "true") == 0 || 
-            _stricmp(cWord, "1") == 0) { 
-               bClickLinks = true; 
-               WriteChatf ("MQ2LinkDB: Will auto-click exact match links it generates.");    
-            } else { 
-               bClickLinks = false; 
-               WriteChatf ("MQ2LinkDB: Will not auto-click exact match links it generates."); 
-            } 
-
-            SaveSettings (); 
-
-            bAnyParams = true; 
-      } else if (strcmp (cWord, "/scan") == 0) { 
-         cWord = strtok_s(NULL, " ", &next_token1);
-
-         if (_stricmp(cWord, "on") == 0 || 
-            _stricmp(cWord, "yes") == 0 || 
-            _stricmp(cWord, "true") == 0 || 
-            _stricmp(cWord, "1") == 0) { 
-               bScanChat = true; 
-               WriteChatf ("MQ2LinkDB: Will scan incoming chat for item links.", iMaxResults);    
-            } else { 
-               bScanChat = false; 
-               WriteChatf ("MQ2LinkDB: Will not scan incoming chat for item links.", iMaxResults); 
-            } 
-
-            SaveSettings (); 
-
-            bAnyParams = true; 
+		  cWord = strtok_s(NULL, " ", &next_token1);
+		  if (cWord)
+		  {
+			  if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
+			  {
+				  bClickLinks = true;
+			  }
+			  else
+			  {
+				  bClickLinks = false;
+			  }
+		  }
+		  else
+		  {
+			  bClickLinks = !bClickLinks;
+		  }
+		  WriteChatf("MQ2LinkDB: Will%sauto-click exact match links it generates.", bClickLinks ? " ":" NOT ");
+		  SaveSettings();
+		  bAnyParams = true;
+	  }
+	  else if (strcmp(cWord, "/scan") == 0)
+	  {
+		  cWord = strtok_s(NULL, " ", &next_token1);
+		  if (cWord)
+		  {
+			  if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
+			  {
+				  bScanChat = true;
+			  }
+			  else {
+				  bScanChat = false;
+			  }
+		  }
+		  else
+		  {
+			  bScanChat = !bScanChat;
+		  }
+		  WriteChatf("MQ2LinkDB: Will%sscan incoming chat for item links.", bScanChat ? " ":" NOT ");
+		  SaveSettings();
+		  bAnyParams = true;
       } else if (strcmp (cWord, "/user") == 0) { 
          cWord = strtok_s(NULL, " ", &next_token1);
 
@@ -881,7 +887,8 @@ static VOID CommandLink(PSPAWNINFO pChar, PCHAR szLine)
                bShow = true;        // We display this result even if we've already shown iMaxResults count 
                bForcedExtra = i >= iMaxResults; 
                //if (bClickLinks && !bReplyMode) ClickLink(pChar, cArray[i]);
-               if (bClickLinks && !bReplyMode) ClickLink(pChar, cLink);
+               if (bClickLinks && !bReplyMode)
+				   ClickLink(pChar, cLink);
             } 
 
             if (bShow) { 
