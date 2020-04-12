@@ -1463,7 +1463,11 @@ typedef struct {
 	int  itemclass;
 	char name[ITEM_NAME_LEN];
 	char lore[LORE_NAME_LEN];
+	#if defined(TEST)
+	int idfile;
+	#else
 	char idfile[0x20];
+	#endif
 	char lorefile[255];
 	long id;
 	long weight;
@@ -1772,7 +1776,11 @@ void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
 	case   0: Item->itemclass = lValue; break;
 	case   1: strcpy_s(Item->name, cField); break;
 	case   2: strcpy_s(Item->lore, cField); break;
+	#if defined(TEST)
+	case   3: Item->idfile = lValue; break;
+	#else
 	case   3: strcpy_s(Item->idfile, cField); break;
+	#endif
 	case   4: strcpy_s(Item->lorefile, cField); break;
 	case   5: Item->id = lValue; break;
 	case   6: Item->weight = lValue; break;
@@ -2207,7 +2215,12 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	strcpy_s(pItemInfo->LoreName, Item->lore);
 	//strcpy_s(pItemInfo->AdvancedLoreName, );
 	memset(&pItemInfo->AdvancedLoreName, 0, sizeof(pItemInfo->AdvancedLoreName));
+	#if defined(TEST)
+	pItemInfo->IDFile = Item->idfile;
+	#else
 	strcpy_s(pItemInfo->IDFile, Item->idfile);
+	#endif
+
 	//strcpy_s(pItemInfo->IDFile2, );
 	memset(&pItemInfo->IDFile2, 0, sizeof(pItemInfo->IDFile2));
 	pItemInfo->ItemNumber = Item->id;
@@ -2236,7 +2249,11 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 #if !defined(ROF2EMU) && !defined(UFEMU)
 	pItemInfo->bFreeSlot = 0;
 	pItemInfo->bAutoUse = 0;
+	#if defined(TEST)
+	pItemInfo->Unknown0x00e4 = 0;
+	#else
 	pItemInfo->Unknown0x0118 = 0;
+	#endif
 	pItemInfo->LoreEquipped = 1;
 #endif
 	pItemInfo->Size = Item->size;
@@ -2340,11 +2357,17 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pItemInfo->LDTheme = Item->ldontheme;
 	pItemInfo->LDCost = Item->ldonprice;
 	pItemInfo->LDType = 0;
-#if !defined(ROF2EMU) && !defined(UFEMU)
+	#if defined(ROF2EMU) || defined(UFEMU)
+	memset(&pItemInfo->Unknown0x0238, 0, sizeof(pItemInfo->Unknown0x0238));
+	memset(&pItemInfo->Unknown0x023c, 0, sizeof(pItemInfo->Unknown0x023c));
+	#elif defined(TEST)
+	memset(&pItemInfo->Unknown0x01f8, 0, sizeof(pItemInfo->Unknown0x01f8));
+	memset(&pItemInfo->Unknown0x01fc, 0, sizeof(pItemInfo->Unknown0x01fc));
+	#else
 	memset(&pItemInfo->Unknown0x022c, 0, sizeof(pItemInfo->Unknown0x022c));
 	memset(&pItemInfo->Unknown0x0230, 0, sizeof(pItemInfo->Unknown0x0230));
-	memset(&pItemInfo->Unknown0x0254, 0, sizeof(pItemInfo->Unknown0x0254));
-#endif
+	#endif
+	memset(&pItemInfo->MerchantGreedMod, 0, sizeof(pItemInfo->MerchantGreedMod));
 	strcpy_s(pItemInfo->CharmFile, Item->charmfile);
 	memset(&pItemInfo->Clicky, 0, sizeof(pItemInfo->Clicky));
 	memset(&pItemInfo->Proc, 0, sizeof(pItemInfo->Proc));
