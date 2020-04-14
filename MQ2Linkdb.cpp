@@ -52,8 +52,9 @@
 //
 //
 // Changes: 
-// 3.3 - Eqmule Jan 09 2020 - Fixed a crash when spell links was parsed.
-// 3.2 - Eqmule Jan 08 2020 - Updated to not require an item on cursor to do /link /import and to not poof the item used as the template.
+// 3.4 - Eqmule Jan 09 2020 - Fixed a crash when spell links was parsed.
+// 3.3 - Eqmule Jan 08 2020 - Updated to not require an item on cursor to do /link /import and to not poof the item used as the template.
+// 3.2  Updated for new link format for TBL.
 // 3.1  Updated for new link format on BETA, 11/9/18.
 // 3.0 - Eqmule 07-22-2016 - Added string safety.
 // 2.4  Updated to include new sodeq db dump format as the input based on old
@@ -116,8 +117,8 @@
 #include "../MQ2Plugin.h" 
 
 PreSetup("MQ2LinkDB"); 
-PLUGIN_VERSION(3.3); 
-#define MY_STRING    "MQ2LinkDB \ar3.3\ax by Ziggy, modifications by SwiftyMUSE" 
+PLUGIN_VERSION(3.4); 
+#define MY_STRING    "MQ2LinkDB \ar3.4\ax by Ziggy, modifications by SwiftyMUSE" 
 #ifdef ISXEQ
 #define ISINDEX() (argc>0)
 #define ISNUMBER() (IsNumber(argv[0]))
@@ -1463,11 +1464,7 @@ typedef struct {
 	int  itemclass;
 	char name[ITEM_NAME_LEN];
 	char lore[LORE_NAME_LEN];
-	#if defined(TEST)
-	int idfile;
-	#else
 	char idfile[0x20];
-	#endif
 	char lorefile[255];
 	long id;
 	long weight;
@@ -1776,11 +1773,8 @@ void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
 	case   0: Item->itemclass = lValue; break;
 	case   1: strcpy_s(Item->name, cField); break;
 	case   2: strcpy_s(Item->lore, cField); break;
-	#if defined(TEST)
-	case   3: Item->idfile = lValue; break;
-	#else
+
 	case   3: strcpy_s(Item->idfile, cField); break;
-	#endif
 	case   4: strcpy_s(Item->lorefile, cField); break;
 	case   5: Item->id = lValue; break;
 	case   6: Item->weight = lValue; break;
@@ -2215,12 +2209,11 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	strcpy_s(pItemInfo->LoreName, Item->lore);
 	//strcpy_s(pItemInfo->AdvancedLoreName, );
 	memset(&pItemInfo->AdvancedLoreName, 0, sizeof(pItemInfo->AdvancedLoreName));
-	#if defined(TEST)
-	pItemInfo->IDFile = Item->idfile;
-	#else
+#if !defined(TEST)
 	strcpy_s(pItemInfo->IDFile, Item->idfile);
-	#endif
-
+#else
+	pItemInfo->IDFile = 0;
+#endif
 	//strcpy_s(pItemInfo->IDFile2, );
 	memset(&pItemInfo->IDFile2, 0, sizeof(pItemInfo->IDFile2));
 	pItemInfo->ItemNumber = Item->id;
@@ -2249,11 +2242,11 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 #if !defined(ROF2EMU) && !defined(UFEMU)
 	pItemInfo->bFreeSlot = 0;
 	pItemInfo->bAutoUse = 0;
-	#if defined(TEST)
-	pItemInfo->Unknown0x00e4 = 0;
-	#else
+#if !defined(TEST)
 	pItemInfo->Unknown0x0118 = 0;
-	#endif
+#else
+	pItemInfo->Unknown0x00e4 = 0;
+#endif
 	pItemInfo->LoreEquipped = 1;
 #endif
 	pItemInfo->Size = Item->size;
@@ -2357,18 +2350,32 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pItemInfo->LDTheme = Item->ldontheme;
 	pItemInfo->LDCost = Item->ldonprice;
 	pItemInfo->LDType = 0;
-	#if defined(ROF2EMU) || defined(UFEMU)
-	memset(&pItemInfo->Unknown0x0238, 0, sizeof(pItemInfo->Unknown0x0238));
-	memset(&pItemInfo->Unknown0x023c, 0, sizeof(pItemInfo->Unknown0x023c));
-	#elif defined(TEST)
-	memset(&pItemInfo->Unknown0x01f8, 0, sizeof(pItemInfo->Unknown0x01f8));
-	memset(&pItemInfo->Unknown0x01fc, 0, sizeof(pItemInfo->Unknown0x01fc));
-	#else
+#if !defined(ROF2EMU) && !defined(UFEMU)
+#if !defined(TEST)
 	memset(&pItemInfo->Unknown0x022c, 0, sizeof(pItemInfo->Unknown0x022c));
 	memset(&pItemInfo->Unknown0x0230, 0, sizeof(pItemInfo->Unknown0x0230));
-	#endif
-	memset(&pItemInfo->MerchantGreedMod, 0, sizeof(pItemInfo->MerchantGreedMod));
+#else
+	memset(&pItemInfo->Unknown0x01f8, 0, sizeof(pItemInfo->Unknown0x01f8));
+	memset(&pItemInfo->Unknown0x01fc, 0, sizeof(pItemInfo->Unknown0x01fc));
+#endif
+#endif
+#if defined(ROF2EMU) || defined(UFEMU)
+	memset(&pItemInfo->Unknown0x0238, 0, sizeof(pItemInfo->Unknown0x0238));
+	pItemInfo->FactionModType[0] = Item->factionmod1;
+	pItemInfo->FactionModType[1] = Item->factionmod2;
+	pItemInfo->FactionModType[2] = Item->factionmod3;
+	pItemInfo->FactionModType[3] = Item->factionmod4;
+	pItemInfo->FactionModValue[0] = Item->factionamt1;
+	pItemInfo->FactionModValue[1] = Item->factionamt2;
+	pItemInfo->FactionModValue[2] = Item->factionamt3;
+	pItemInfo->FactionModValue[3] = Item->factionamt4;
+#endif
 	strcpy_s(pItemInfo->CharmFile, Item->charmfile);
+#if !defined(ROF2EMU) && !defined(UFEMU)
+	memset(&pItemInfo->MerchantGreedMod, 0, sizeof(pItemInfo->MerchantGreedMod));
+#else
+	memset(&pItemInfo->Unknown0x0280, 0, sizeof(pItemInfo->Unknown0x0280));
+#endif
 	memset(&pItemInfo->Clicky, 0, sizeof(pItemInfo->Clicky));
 	memset(&pItemInfo->Proc, 0, sizeof(pItemInfo->Proc));
 	memset(&pItemInfo->Worn, 0, sizeof(pItemInfo->Worn));
@@ -2472,11 +2479,11 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pCursor->ItemHash = 0;
 	pCursor->bItemNeedsUpdate = 0;
 	pCursor->OrnamentationIcon = 0;
-	#if defined(ROF2EMU) || defined(UFEMU)
+#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->ItemColor = 0;
 	pCursor->IsEvolvingItem = ((Item->evoid > 0 && Item->evoid < 10000) ? 1 : 0);
 	pCursor->EvolvingMaxLevel = Item->evomax;
-	#else
+#else
 	bool IsEvolvingItem = ((Item->evoid > 0 && Item->evoid < 10000) ? 1 : 0);
 	if (IsEvolvingItem)
 	{
@@ -2487,7 +2494,7 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 		pCursor->pEvolutionData->GroupID = (IsEvolvingItem ? Item->evoid : (Item->loregroup > 0) ? Item->loregroup & 0xFFFF : 0);
 		pCursor->pEvolutionData->LastEquipped = 0;
 	}
-	#endif
+#endif
 	pCursor->ScriptIndex = 0;
 	pCursor->ArmorType = -1;
 	memset(&pCursor->RealEstateArray, 0, sizeof(pCursor->RealEstateArray));
@@ -2504,28 +2511,26 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pCursor->bCopied = 0;
 	pCursor->bDisableAugTexture = 0;
 	memset(&pCursor->ItemGUID, 0, sizeof(pCursor->ItemGUID));
-	#if !defined(TEST) && !defined(LIVE) && !defined(EQBETA)
+#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->EvolvingExpOn = 0;
-	#endif
-	#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->EvolvingExpPct = 0;
 	pCursor->EvolvingCurrentLevel = (pCursor->IsEvolvingItem ? Item->evolvinglevel : 0);
-	#endif
+#endif
 	pCursor->MerchantQuantity = 0;
 	pCursor->NewArmorID = 0;
 	memset(&pCursor->ActorTag2, 0, sizeof(pCursor->ActorTag2));
-	#if defined(ROF2EMU) || defined(UFEMU)
+#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->GroupID = (pCursor->IsEvolvingItem ? Item->evoid : (Item->loregroup > 0) ? Item->loregroup & 0xFFFF : 0);
-	#endif
+#endif
 	memset(&pCursor->GlobalIndex, 0, sizeof(pCursor->GlobalIndex));
 #if !defined(ROF2EMU) && !defined(UFEMU)
 	pCursor->ConvertItemID = 0;
 #endif
 	pCursor->NoDropFlag = 0;
 	pCursor->AugFlag = 0;
-	#if defined(ROF2EMU) || defined(UFEMU)
+#if defined(ROF2EMU) || defined(UFEMU)
 	pCursor->LastEquipped = 0;
-	#endif
+#endif
 	pCursor->RespawnTime = 0;
 	//pCursor->Filler1 = 0;
 	//pCursor->Filler2 = 0;
