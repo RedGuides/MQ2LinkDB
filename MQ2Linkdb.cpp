@@ -2209,7 +2209,7 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	strcpy_s(pItemInfo->LoreName, Item->lore);
 	//strcpy_s(pItemInfo->AdvancedLoreName, );
 	memset(&pItemInfo->AdvancedLoreName, 0, sizeof(pItemInfo->AdvancedLoreName));
-#if !defined(TEST)
+#if defined(ROF2EMU) || defined(UFEMU)
 	strcpy_s(pItemInfo->IDFile, Item->idfile);
 #else
 	pItemInfo->IDFile = 0;
@@ -2242,11 +2242,7 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 #if !defined(ROF2EMU) && !defined(UFEMU)
 	pItemInfo->bFreeSlot = 0;
 	pItemInfo->bAutoUse = 0;
-#if !defined(TEST)
-	pItemInfo->Unknown0x0118 = 0;
-#else
 	pItemInfo->Unknown0x00e4 = 0;
-#endif
 	pItemInfo->LoreEquipped = 1;
 #endif
 	pItemInfo->Size = Item->size;
@@ -2351,13 +2347,11 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pItemInfo->LDCost = Item->ldonprice;
 	pItemInfo->LDType = 0;
 #if !defined(ROF2EMU) && !defined(UFEMU)
-#if !defined(TEST)
-	memset(&pItemInfo->Unknown0x022c, 0, sizeof(pItemInfo->Unknown0x022c));
-	memset(&pItemInfo->Unknown0x0230, 0, sizeof(pItemInfo->Unknown0x0230));
-#else
 	memset(&pItemInfo->Unknown0x01f8, 0, sizeof(pItemInfo->Unknown0x01f8));
 	memset(&pItemInfo->Unknown0x01fc, 0, sizeof(pItemInfo->Unknown0x01fc));
-#endif
+#else
+	memset(&pItemInfo->Unknown0x0238, 0, sizeof(pItemInfo->Unknown0x0238));
+	memset(&pItemInfo->Unknown0x023c, 0, sizeof(pItemInfo->Unknown0x023c));
 #endif
 #if defined(ROF2EMU) || defined(UFEMU)
 	memset(&pItemInfo->Unknown0x0238, 0, sizeof(pItemInfo->Unknown0x0238));
