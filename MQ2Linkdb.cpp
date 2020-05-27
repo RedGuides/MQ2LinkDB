@@ -2194,13 +2194,11 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pCursor->RefCount = pCursorOrg->RefCount;
 	pCursor->punknown = pCursorOrg->punknown;
 	pCursor->Item1 = 0;
-	pCursor->Luck = 0;
 	pCursor->Contents.bDynamic = pCursorOrg->Contents.bDynamic;
 	pCursor->Contents = pCursorOrg->Contents;
 
 	pCursor->GlobalIndex = pCursorOrg->GlobalIndex;
 	pCursor->RealEstateArray = pCursorOrg->RealEstateArray;
-	pCursor->DontKnow = pCursorOrg->DontKnow;
 
 	pItemInfo = (PITEMINFO)LocalAlloc(LPTR, sizeof(ITEMINFO));
 	//pItemInfo = GetItemFromContents(pCursor);
@@ -2212,6 +2210,8 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 #if defined(ROF2EMU) || defined(UFEMU)
 	strcpy_s(pItemInfo->IDFile, Item->idfile);
 #else
+	pCursor->DontKnow = pCursorOrg->DontKnow;
+	pCursor->Luck = 0;
 	pItemInfo->IDFile = 0;
 #endif
 	//strcpy_s(pItemInfo->IDFile2, );
@@ -2365,11 +2365,7 @@ template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&c
 	pItemInfo->FactionModValue[3] = Item->factionamt4;
 #endif
 	strcpy_s(pItemInfo->CharmFile, Item->charmfile);
-#if !defined(ROF2EMU) && !defined(UFEMU)
 	memset(&pItemInfo->MerchantGreedMod, 0, sizeof(pItemInfo->MerchantGreedMod));
-#else
-	memset(&pItemInfo->Unknown0x0280, 0, sizeof(pItemInfo->Unknown0x0280));
-#endif
 	memset(&pItemInfo->Clicky, 0, sizeof(pItemInfo->Clicky));
 	memset(&pItemInfo->Proc, 0, sizeof(pItemInfo->Proc));
 	memset(&pItemInfo->Worn, 0, sizeof(pItemInfo->Worn));
