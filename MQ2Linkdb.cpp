@@ -1221,8 +1221,11 @@ enum ETagCodes
 	ETAG_COUNT
 };
 const int TagSizes[ETAG_COUNT] = {
-	//58,
+#if defined(ROF2EMU) || defined(UFEMU)
+	58,
+#else
 	93,
+#endif
 	3,
 	3,
 	0,
