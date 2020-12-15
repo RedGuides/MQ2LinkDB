@@ -2132,45 +2132,27 @@ PCONTENTS FindFirstItem()
 #if !defined(ROF2EMU) && !defined(UFEMU)
 	PCHARINFO pChar = GetCharInfo();
 	//still not found? fine... check mount keyring
-#ifdef NEWCHARINFO
 	if (pChar) {
 		for (unsigned long nSlot = 0; nSlot < pChar->MountKeyRingItems.Items.Size; nSlot++) {
 			if (PCONTENTS pItem = pChar->MountKeyRingItems.Items[nSlot].pObject) {
-#else
-	if (pChar && pChar->pMountsArray && pChar->pMountsArray->Mounts) {
-		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
-			if (PCONTENTS pItem = pChar->pMountsArray->Mounts[nSlot]) {
-#endif
 				return pItem;
 			}
 		}
 	}
 
 	//still not found? fine... check illusions keyring
-#ifdef NEWCHARINFO
 	if (pChar) {
 		for (unsigned long nSlot = 0; nSlot < pChar->IllusionKeyRingItems.Items.Size; nSlot++) {
 			if (PCONTENTS pItem = pChar->IllusionKeyRingItems.Items[nSlot].pObject) {
-#else
-	if (pChar && pChar->pIllusionsArray && pChar->pIllusionsArray->Illusions) {
-		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
-			if (PCONTENTS pItem = pChar->pIllusionsArray->Illusions[nSlot]) {
-#endif
 				return pItem;
 			}
 		}
 	}
 
 	//still not found? fine... check familiars keyring
-#ifdef NEWCHARINFO
 	if (pChar) {
 		for (unsigned long nSlot = 0; nSlot < pChar->FamiliarKeyRingItems.Items.Size; nSlot++) {
 			if (PCONTENTS pItem = pChar->FamiliarKeyRingItems.Items[nSlot].pObject) {
-#else
-	if (pChar && pChar->pFamiliarArray && pChar->pFamiliarArray->Familiars) {
-		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
-			if (PCONTENTS pItem = pChar->pFamiliarArray->Familiars[nSlot]) {
-#endif
 				return pItem;
 			}
 		}
