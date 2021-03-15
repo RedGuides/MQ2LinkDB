@@ -3,1100 +3,1045 @@
 
 // TODO: Auto update from 13th floor website
 
-#include "../MQ2Plugin.h"
+#include <mq/Plugin.h>
 
-PreSetup("MQ2LinkDB"); 
-PLUGIN_VERSION(3.4); 
-#define MY_STRING    "MQ2LinkDB \ar3.4\ax by Ziggy, modifications by SwiftyMUSE" 
-#ifdef ISXEQ
-#define ISINDEX() (argc>0)
-#define ISNUMBER() (IsNumber(argv[0]))
-#define GETNUMBER() (atoi(argv[0]))
-#define GETFIRST()	argv[0]
-#else
-#define ISINDEX() (szIndex[0])
-#define ISNUMBER() (IsNumber(szIndex))
-#define GETNUMBER() (atoi(szIndex))
-#define GETFIRST() szIndex
-#endif
+#include <string>
+#include <vector>
 
-#pragma warning( disable:4800 ) // warning C4800: 'long': forcing value to bool 'true' or 'false' (performance warning)
+PreSetup("MQ2LinkDB");
+PLUGIN_VERSION(3.4);
 
-template <unsigned int _Size>int SearchLinkDB(char** ppOutputArray, CHAR(&searchText)[_Size], BOOL bExact);
+#define MY_STRING "MQ2LinkDB \ar4.0\ax by Ziggy, modifications by SwiftyMUSE"
 
-// Keep the last 10 results we've done and then cycle through. 
-// When I just kept the last one, doing two ${LinkDB[]} calls in one 
-// macro link crashed EQ. Well now you can do 10 on one line. If that's 
-// not enough, increase the LAST_RESULT_CACHE_SIZE. 
+static std::vector<std::string> SearchLinkDB(const char* szSearchText, bool bExact);
+static void ConvertItemsDotTxt();
 
-#define LAST_RESULT_CACHE_SIZE 10 
-#define NEXT_RESULT_POSITION(x) (x = ((x)+1) % LAST_RESULT_CACHE_SIZE) 
-static char g_tloLastResult[LAST_RESULT_CACHE_SIZE][256]; 
-static int g_iLastResultPosition = 0; 
+// Keep the last 10 results we've done and then cycle through.
+// When I just kept the last one, doing two ${LinkDB[]} calls in one
+// macro link crashed EQ. Well now you can do 10 on one line. If that's
+// not enough, increase the LAST_RESULT_CACHE_SIZE.
 
-static VOID ConvertItemsDotTxt(void);
-static VOID ConvertLucydownloadDotTxt(void);
+constexpr int LAST_RESULT_CACHE_SIZE = 10;
+static char g_tloLastResult[LAST_RESULT_CACHE_SIZE][256];
+static int g_iLastResultPosition = 0;
 
 static bool bReplyMode = false;
-static bool bQuietMode = true;               // Display debug chatter? 
-static int iAddedThisSession = 0;            // How many new links found since startup 
-static int iTotalInDB = 0;                   // Number of links in db 
-static bool bKnowTotal = false;              // Do we know how many links in db? 
-static int iMaxResults = 10;                 // Display at most this many results 
-static int iFindItemID = 0;					 // Item ID to /link
-static int iVerifyCount;					 // Starting line # to generate 100 links for verification
-static bool bScanChat = true;                // Scan incoming chat for links 
-static bool bClickLinks = false;			 // click on link generated?
+static bool bQuietMode = true;               // Display debug chatter?
+static int iAddedThisSession = 0;            // How many new links found since startup
+static int iTotalInDB = 0;                   // Number of links in db
+static bool bKnowTotal = false;              // Do we know how many links in db?
+static size_t iMaxResults = 10;                 // Display at most this many results
+static int iFindItemID = 0;                  // Item ID to /link
+static int iVerifyCount;                     // Starting line # to generate 100 links for verification
+static bool bScanChat = true;                // Scan incoming chat for links
+static bool bClickLinks = false;             // click on link generated?
+static bool bReadFileInFind = false;         // should we reload the file when looking for new links?
 
 #if !defined(ROF2EMU) && !defined(UFEMU)
-#define START_LINKTEXT (0x5A + 2)			 // starting position of link text found in MQ2Web__ParseItemLink_x
+constexpr int START_LINKTEXT = (0x5a + 2);   // starting position of link text found in MQ2Web__ParseItemLink_x
 #else
-#define START_LINKTEXT (0x37 + 2)
+constexpr int START_LINKTEXT = (0x37 + 2);
 #endif
-#define MAX_PRESENT 180000 
-static unsigned char * abPresent = NULL;     // Bitfield to say yes/no we have/don't have each item id 
 
-#define MAX_INTERNAL_RESULTS  500            // Max size of our sort array 
-#define SORTEM 
+static std::unordered_set<int> presentItemIDs;
+static bool bPresentItemIDsLoaded = false;
 
-static char cLink[MAX_STRING/4] = { 0 };
+static char cLink[MAX_STRING / 4] = { 0 };
 static int iCurrentID = 0;
 static int iNextID = 0;
 
 char cLinkDBFileName[MAX_PATH] = { 0 };
 
-class MQ2LinkType *pLinkType = 0; 
-
-class MQ2LinkType : public MQ2Type 
-{ 
-public: 
-   enum LinkMembers { 
-      Link=1, 
-      CurrentID=2, 
-      NextID=3, 
-   }; 
-
-   MQ2LinkType():MQ2Type("linkdb") 
-   { 
-      TypeMember(Link); 
-      TypeMember(CurrentID); 
-      TypeMember(NextID); 
-   } 
-
-   ~MQ2LinkType() 
-   { 
-   } 
-
-   bool MQ2LinkType::GETMEMBER()
-   { 
-      PMQ2TYPEMEMBER pMember=MQ2LinkType::FindMember(Member); 
-      if (!pMember) 
-         return false; 
-      switch((LinkMembers)pMember->ID) 
-      { 
-      case Link: 
-         strcpy_s(DataTypeTemp,cLink); 
-         Dest.Ptr=&DataTypeTemp[0]; 
-         Dest.Type=pStringType; 
-         return true; 
-      case CurrentID: 
-         Dest.DWord=iCurrentID; 
-         Dest.Type=pIntType; 
-         return true; 
-      case NextID: 
-         Dest.DWord=iNextID; 
-         Dest.Type=pIntType; 
-         return true; 
-      } 
-      return false; 
-   } 
-
-   bool ToString(MQ2VARPTR VarPtr, PCHAR Destination) 
-   { 
-	  strcpy_s(Destination,MAX_STRING,cLink); 
-      return true; 
-   } 
-
-   bool FromData(MQ2VARPTR &VarPtr, MQ2TYPEVAR &Source) 
-   { 
-      return false; 
-   } 
-   bool FromString(MQ2VARPTR &VarPtr, PCHAR Source) 
-   { 
-      return false; 
-   } 
-}; 
-
-template <unsigned int _Size>static int strcnt(CHAR(&_Buffer)[_Size], CHAR cChar)
+class MQ2LinkType : public MQ2Type
 {
-	CHAR szString[MAX_STRING * 2] = { 0 };
-	int ret = 0;
-	int i = 0;
-
-	strcpy_s(szString, _Buffer);
-	while (szString[i])
+public:
+	enum class LinkMembers
 	{
-		if (szString[i] == cChar)
-			ret++;
-		i++;
+		Link = 1,
+		CurrentID,
+		NextID,
+	};
+
+	MQ2LinkType() : MQ2Type("linkdb")
+	{
+		ScopedTypeMember(LinkMembers, Link);
+		ScopedTypeMember(LinkMembers, CurrentID);
+		ScopedTypeMember(LinkMembers, NextID);
 	}
-	return ret;
+
+	virtual bool GetMember(MQVarPtr VarPtr, const char* Member, char* Index, MQTypeVar& Dest) override
+	{
+		MQTypeMember* pMember = MQ2LinkType::FindMember(Member);
+		if (!pMember)
+			return false;
+
+		switch (static_cast<LinkMembers>(pMember->ID))
+		{
+		case LinkMembers::Link:
+			strcpy_s(DataTypeTemp, cLink);
+			Dest.Ptr = &DataTypeTemp[0];
+			Dest.Type = datatypes::pStringType;
+			return true;
+		case LinkMembers::CurrentID:
+			Dest.DWord = iCurrentID;
+			Dest.Type = datatypes::pIntType;
+			return true;
+		case LinkMembers::NextID:
+			Dest.DWord = iNextID;
+			Dest.Type = datatypes::pIntType;
+			return true;
+		}
+		return false;
+	}
+
+	bool ToString(MQVarPtr VarPtr, char* Destination) override
+	{
+		strcpy_s(Destination, MAX_STRING, cLink);
+		return true;
+	}
+};
+MQ2LinkType* pLinkType = nullptr;
+
+static int strcnt(const char* buffer, char cChar)
+{
+	int count = 0;
+	for (int i = 0; buffer[i] != 0; ++i)
+	{
+		if (buffer[i] == cChar)
+			count++;
+	}
+	return count;
 }
 
-BOOL dataLinkDB(PCHAR szIndex, MQ2TYPEVAR &Ret) 
-{ 
-   if (!ISINDEX())
-   {
-	  Ret.DWord=0; 
-      Ret.Type=pLinkType; 
-      return true; 
-   }
+bool dataLinkDB(const char* szIndex, MQTypeVar& Ret)
+{
+	if (!szIndex[0])
+	{
+		Ret.DWord = 0;
+		Ret.Type = pLinkType;
+		return true;
+	}
 
-   iFindItemID = 0;
-   PCHAR pItemName = GETFIRST(); 
-   BOOL bExact = false; 
+	iFindItemID = 0;
+	int lastResultPosition = g_iLastResultPosition;
 
-   if (*pItemName == '=') 
-   { 
-      bExact = true; 
-      pItemName++; 
-   } 
-   CHAR szItemName[MAX_STRING] = { 0 };
-   strcpy_s(szItemName, pItemName);
+	const char* pItemName = szIndex;
+	bool bExact = pItemName[0] == '=' && ++pItemName;
 
-   char** ppMatches = new char*[MAX_INTERNAL_RESULTS]; 
-   memset (ppMatches, 0, sizeof(char *) *MAX_INTERNAL_RESULTS); 
+	std::vector<std::string> results = SearchLinkDB(pItemName, bExact);
 
-   int iFound = SearchLinkDB(ppMatches, szItemName, bExact); 
-   BOOL bReturnFilled = false; 
+	if (!results.empty())
+	{
+		strcpy_s(g_tloLastResult[lastResultPosition], results[0].c_str());
+		g_iLastResultPosition = (g_iLastResultPosition + 1) & LAST_RESULT_CACHE_SIZE;
+	}
+	else
+	{
+		g_tloLastResult[lastResultPosition][0] = 0;
+	}
 
-   for (int i = 0; i < iFound; i++) 
-   { 
-      if (! bReturnFilled) 
-      { 
-         strcpy_s(g_tloLastResult[g_iLastResultPosition], ppMatches[i]); 
-         bReturnFilled = true; 
-      } 
+	Ret.Ptr = g_tloLastResult[lastResultPosition];
+	Ret.Type = datatypes::pStringType;
+	return true;
+}
 
-      free (ppMatches[i]); 
-      ppMatches[i] = NULL; 
-   } 
+static int VerifyLinks();
 
-   delete (ppMatches); 
+static void SaveSettings()
+{
+	char cNumber[16] = { 0 };
+	_itoa_s(iMaxResults, cNumber, 10);
 
-   if (!bReturnFilled)
-      strcpy_s(g_tloLastResult[g_iLastResultPosition], "\0");
-   Ret.Ptr = g_tloLastResult[g_iLastResultPosition]; 
-   if (bReturnFilled)
-      NEXT_RESULT_POSITION(g_iLastResultPosition); 
+	WritePrivateProfileString("Settings", "MaxResults", cNumber, INIFileName);
+	WritePrivateProfileString("Settings", "ScanChat", bScanChat ? "1" : "0", INIFileName);
+	WritePrivateProfileString("Settings", "ClickLinks", bClickLinks ? "1" : "0", INIFileName);
+}
 
-   Ret.Type = pStringType; 
-   return true;
-} 
+static void LoadSettings()
+{
+	sprintf_s(cLinkDBFileName, "%s\\MQ2LinkDB.txt", gPathResources);
 
-static int VerifyLinks (void);
+	iMaxResults = GetPrivateProfileInt("Settings", "MaxResults", 10, INIFileName);
+	if (iMaxResults < 1) iMaxResults = 1;
 
-// 
-// static void SaveSettings (void) 
-// 
-static void SaveSettings (void) 
-{ 
-   char cNumber[16] = { 0 }; 
-   _itoa_s(iMaxResults, cNumber, 10); 
+	int iScanChat = GetPrivateProfileInt("Settings", "ScanChat", 1, INIFileName);
+	bScanChat = iScanChat > 0;
 
-   WritePrivateProfileString("Settings", "MaxResults", cNumber, INIFileName); 
-   WritePrivateProfileString("Settings", "ScanChat", bScanChat ? "1" : "0", INIFileName); 
-   WritePrivateProfileString("Settings", "ClickLinks", bClickLinks ? "1" : "0", INIFileName); 
-} 
+	int iClickLinks = GetPrivateProfileInt("Settings", "ClickLinks", 0, INIFileName);
+	bClickLinks = iClickLinks > 0;
+}
 
-// 
-// static void LoadSettings (void) 
-// 
-static void LoadSettings (void) 
-{ 
-   sprintf_s(cLinkDBFileName,"%s\\MQ2LinkDB.txt", gszINIPath); 
+static int ItemID(const char* cLink)
+{
+	char cMid[6];
 
-   iMaxResults = GetPrivateProfileInt ("Settings", "MaxResults", 10, INIFileName); 
-   if (iMaxResults < 1) iMaxResults = 1; 
+	// Skip \x12 and first number
+	memcpy(cMid, cLink + 2, 5);
+	cMid[5] = '\0';
 
-   int iScanChat = GetPrivateProfileInt("Settings", "ScanChat", 1, INIFileName); 
-   bScanChat = iScanChat > 0; 
+	return (int)(strtol(cMid, nullptr, 16));
+}
 
-   int iClickLinks = GetPrivateProfileInt("Settings", "ClickLinks", 0, INIFileName); 
-   bClickLinks = iClickLinks > 0; 
-} 
+// Make sure no augs in the link
+static bool IsAuged(const char* cLink)
+{
+	char cMid[6];
+	for (int i = 0; i < 5; i++)
+	{
+		memcpy(cMid, cLink + 7 + (i * 5), 5);
+		cMid[5] = '\0';
+		if (atoi(cMid) != 0)
+		{
+			return true;
+		}
+	}
 
-// 
-// static int ItemID (const char * cLink) 
-// 
-static int ItemID (const char * cLink) 
-{ 
-   char cMid[6]; 
+	return false;
+}
 
-   // Skip \x12 and first number 
-   memcpy (cMid, cLink + 2, 5); 
-   cMid[5] = '\0'; 
+void CreateIndex()
+{
+	FILE* File = nullptr;
+	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	if (err) return;
 
-   return (int) (strtol (cMid, NULL, 16)); 
-} 
+	char cLine[MAX_STRING] = { 0 };
+	while (fgets(cLine, MAX_STRING, File) != nullptr)
+	{
+		int iItemID = ItemID(cLine);
+		presentItemIDs.insert(iItemID);
+	}
 
-// 
-// void CreateIndex (void) 
-// 
-void CreateIndex (void) 
-{ 
-   if (abPresent != NULL) { 
-      return; 
-   } 
+	bKnowTotal = true;
+	bPresentItemIDsLoaded = true;
+	fclose(File);
+}
 
-   // TODO: Make this dynamic size 
-   abPresent = new unsigned char[MAX_PRESENT / 8 + 1]; 
-   memset (abPresent, 0, MAX_PRESENT / 8 + 1); 
+static bool FindLink(const char* cLink)
+{
+	int iItemID = ItemID(cLink);
 
-   FILE * File = 0;
-   errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
-   iTotalInDB = 0; 
-   bKnowTotal = true; 
+	if (bPresentItemIDsLoaded)
+	{
+		if (presentItemIDs.count(iItemID))
+		{
+			if (!bQuietMode)
+			{
+				WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID);
+			}
 
-   if (!err) { 
-	   char cLine[MAX_STRING] = { 0 };
-      while (fgets (cLine, MAX_STRING, File) != NULL) { 
-         int iItemID = ItemID (cLine); 
+			return true;
+		}
 
-         if (iItemID >= MAX_PRESENT) { 
-            WriteChatf ("MQ2LinkDB: ERROR! Make max index size bigger. (Max: %d, ItemID: %d)", MAX_PRESENT, iItemID); 
-            continue; 
-         } 
+		if (!bReadFileInFind)
+		{
+			return false;
+		}
+	}
 
-         unsigned char cOR = 1 << (iItemID % 8); 
-         abPresent[iItemID / 8] |= cOR; 
+	FILE* File = nullptr;
+	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	if (err) return false;
 
-         iTotalInDB++; 
-      } 
-      fclose (File); 
-   }
-} 
+	// Since we're scanning the file anyway, we'll make the index here to save some time, and to
+	// account for ppl creating new MQ2LinkDB.txt files or whatever.
+	presentItemIDs.clear();
 
-// 
-// static bool IsAuged (const char * cLink) 
-// Make sure no augs in the link 
-// 
-static bool IsAuged (const char * cLink) 
-{ 
-   char cMid[6]; 
-   for (int i = 0; i < 5; i++) { 
-      memcpy (cMid, cLink + 7 + (i * 5), 5); 
-      cMid[5] = '\0'; 
-      if (atoi (cMid) != 0) { 
-         return (true); 
-      } 
-   } 
+	bool bRet = false;
+	bool replaceAugLink = false;
+	int replacePos = -1;
+	char cLine[1024] = { 0 };
 
-   return (false); 
-} 
+	while (fgets(cLine, 1024, File) != nullptr)
+	{
+		cLine[strlen(cLine) - 1] = '\0';   // No LF pls
 
-// 
-// static bool FindLink (const char * cLink) 
-// 
-static bool FindLink (const char * cLink) 
-{ 
-   int iItemID = ItemID (cLink); 
+		int itemId = ItemID(cLine);
+		presentItemIDs.insert(itemId);
 
-   if (abPresent != NULL) { 
-      unsigned char cOR = 1 << (iItemID % 8); 
-      if ((abPresent[iItemID / 8] & cOR) != 0) { 
-         if (!bQuietMode) { 
-            WriteChatf ("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID); 
-         } 
+		if (ItemID(cLine) == iItemID)
+		{
+			bRet = true;
 
-         return (true); 
-      } 
-   } 
-
-   // Since we're scanning the file anyway, we'll make the index here to save some time, and to 
-   // account for ppl creating new MQ2LinkDB.txt files or whatever. 
-   if (abPresent == NULL) { 
-      abPresent = new unsigned char[MAX_PRESENT / 8 + 1]; 
-   } 
-   memset (abPresent, 0, MAX_PRESENT / 8 + 1); 
-
-   bool bRet = false; 
-
-   FILE * File = 0;
-   errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
-   if (!err) { 
-		char cLine[1024] = { 0 };
-      while (fgets (cLine, 1024, File) != NULL) { 
-         cLine[strlen (cLine) - 1] = '\0';   // No LF pls 
-
-         if (ItemID (cLine) == iItemID) { 
-            unsigned char cOR = 1 << (iItemID % 8); 
-            abPresent[iItemID / 8] |= cOR; 
-
-            bRet = true; 
-
-            if (IsAuged (cLine) && !IsAuged (cLink)) { 
-               if (strlen (cLine) == strlen (cLink)) { 
-                  long lPos = ftell (File); 
-                  fclose (File); 
-
-                  if (!bQuietMode) { 
-                     WriteChatf ("MQ2LinkDB: Replacing auged link with un-auged link for item \ay%d\ax", iItemID); 
-                  } 
-
-				  FILE *File2 = 0;
-				  err = fopen_s(&File2, cLinkDBFileName, "r+");
-                  if (!err) { 
-                     fseek (File2, lPos - strlen (cLine) - 2, SEEK_SET); 
-
-                     // Double check position - paranoia! 
-                     char cTemp[10]; 
-                     fread (cTemp, 10, 1, File2); 
-                     if (memcmp (cTemp, cLink, 8) == 0) { 
-                        fseek (File2, lPos - strlen (cLine) - 2, SEEK_SET); // Seek same place again 
-                        fwrite (cLink, strlen (cLink), 1, File2); 
-                     } else { 
-                        if (!bQuietMode) { 
-                           WriteChatf ("MQ2LinkDB: \arERROR - Sanity check failed while replacing"); 
-                        } 
-                     } 
-
-                     fclose (File2);
-                  } else { 
-                     if (!bQuietMode) { 
-                        WriteChatf ("MQ2LinkDB: \arERROR - Could not open db file for writing (%d)", errno); 
-                     } 
-                  } 
-
-                  return (true); 
-               } 
-            } else { 
-               if (!bQuietMode) { 
-                  WriteChatf ("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID); 
-               } 
-            } 
-         } 
-      } 
-
-      fclose (File); 
-   } 
-
-   return (bRet); 
-} 
-
-// 
-// static void StoreLink (const char * cLink) 
-// 
-static void StoreLink (const char * cLink) 
-{ 
-   FILE * File = 0;
-   errno_t err = fopen_s(&File, cLinkDBFileName, "at");
-   if (!err) { 
-      fputs (cLink, File); 
-      fputs ("\n", File); 
-      iAddedThisSession++; 
-      iTotalInDB++; 
-
-      CreateIndex ();         // Won't create if it's already there 
-      if (abPresent != NULL) { 
-         int iItemID = ItemID (cLink); 
-         unsigned char cOR = 1 << (iItemID % 8); 
-         abPresent[iItemID / 8] |= cOR; 
-      } 
-
-      if (!bQuietMode) { 
-         WriteChatf ("MQ2LinkDB: Stored link for item ID: \ay%d\ax (\ay%d\ax stored this session)", ItemID (cLink), iAddedThisSession); 
-      } 
-
-      fclose (File); 
-   } else { 
-      if (!bQuietMode) { 
-         WriteChatf ("MQ2LinkDB: \arERROR - Could not open db file for writing (%d)", errno); 
-      } 
-   } 
-} 
-
-// 
-// static char * LinkExtract (char * cLink) 
-// 
-static char * LinkExtract (char * cLink) 
-{ 
-	if (char * cTemp = _strdup(cLink)) {
-		char * cEnd = strchr(cTemp + START_LINKTEXT, '\x12');
-		int iLen = 1;
-
-		if (cEnd != NULL) {
-			if (*(cTemp + 1) == '\x30') { // Item link
-				*(cEnd + 1) = '\0';
-				iLen = strlen(cTemp);
-
-				//WriteChatf ("MQ2LinkDB: Chat - %s", cTemp + 1); 
-
-				if (!FindLink(cTemp)) {
-					StoreLink(cTemp);
+			if (IsAuged(cLine) && !IsAuged(cLink))
+			{
+				if (strlen(cLine) == strlen(cLink))
+				{
+					replaceAugLink = true;
+					replacePos = ftell(File);
+				}
+			}
+			else
+			{
+				if (!bQuietMode)
+				{
+					WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID);
 				}
 			}
 		}
-		free(cTemp);
-		return (cLink + iLen);
 	}
-	return 0;
-} 
+	fclose(File);
+	bPresentItemIDsLoaded = true;
+	bKnowTotal = true;
 
-// 
-// static void ChatTell(PSPAWNINFO pChar, char *cLine) 
-// 
-static void ChatTell(PSPAWNINFO pChar, char *cLine) 
-{ 
-   DebugSpew("MQ2LinkDB::ChatTell(%s)",cLine); 
-   //WriteChatf("MQ2LinkDB::ChatTell(%s, %s)",pChar->Name,cLine); 
+	// The link in our db had an aug, but ours did not. we take this opportunity to replace it
+	if (replaceAugLink)
+	{
+		if (!bQuietMode)
+		{
+			WriteChatf("MQ2LinkDB: Replacing auged link with un-auged link for item \ay%d\ax", iItemID);
+		}
 
-   char szCmd[MAX_STRING]; 
-   if (!bReplyMode) {
-       sprintf_s(szCmd, "Linkdb told you, '%s'", cLine);
-       dsp_chat_no_events(szCmd, USERCOLOR_TELL, false);
-	} else {
-       sprintf_s(szCmd, ";tell %s %s", pChar->Name, cLine);
-       //WriteChatf("MQ2LinkDB::DoCommand(%s)", cTemp);
-	   //pEverQuest->send_tell(pChar->Name,cLine);
-	   DoCommand(pChar,szCmd);
-       //dsp_chat_no_events(szCmd, USERCOLOR_TELL, false); 
-    }
-} 
+		FILE* File2 = nullptr;
+		err = fopen_s(&File2, cLinkDBFileName, "r+");
+		if (!err)
+		{
+			fseek(File2, replacePos - strlen(cLine) - 2, SEEK_SET);
 
+			// Double check position - paranoia!
+			char cTemp[10];
+			fread(cTemp, 10, 1, File2);
+			if (memcmp(cTemp, cLink, 8) == 0)
+			{
+				fseek(File2, replacePos - strlen(cLine) - 2, SEEK_SET); // Seek same place again
+				fwrite(cLink, strlen(cLink), 1, File2);
+			}
+			else if (!bQuietMode)
+			{
+				WriteChatf("MQ2LinkDB: \arERROR - Sanity check failed while replacing");
+			}
 
-PCONTENTS CursorContents() {
-  return GetCharInfo2()->pInventoryArray->Inventory.Cursor;
+			fclose(File2);
+		}
+		else if (!bQuietMode)
+		{
+			WriteChatf("MQ2LinkDB: \arERROR - Could not open db file for writing (%d)", errno);
+		}
+	}
+
+	return bRet;
 }
 
+static void StoreLink(const char* cLink)
+{
+	if (!bPresentItemIDsLoaded)
+	{
+		CreateIndex();
+	}
 
-// 
-// static void DoParameters (PCHAR cParams) 
-// 
-template <unsigned int _Size>static void DoParameters (CHAR(&cParams)[_Size]) 
-{ 
-   bool bAnyParams = false; 
-   _strlwr_s(cParams);
-   char * cWord = NULL;
-   char *next_token1 = NULL;
+	FILE* File = nullptr;
+	errno_t err = fopen_s(&File, cLinkDBFileName, "at");
+	if (err)
+	{
+		if (!bQuietMode)
+			WriteChatf("MQ2LinkDB: \arERROR - Could not open db file for writing (%d)", errno);
+		return;
+	}
 
-   cWord = strtok_s(cParams, " ", &next_token1);
-   while (cWord != NULL) { 
-      if (strcmp (cWord, "/quiet") == 0) { 
-         bQuietMode = !bQuietMode; 
-         WriteChatf ("MQ2LinkDB: Quiet mode \ay%s\ax", bQuietMode ? "on" : "off"); 
-         bAnyParams = true; 
+	fputs(cLink, File);
+	fputs("\n", File);
+	fclose(File);
 
-      } else if (strcmp (cWord, "/max") == 0) { 
-         cWord = strtok_s(NULL, " ", &next_token1);
-         if (atoi (cWord) > 0) { 
-            iMaxResults = atoi (cWord); 
-            WriteChatf ("MQ2LinkDB: Max results now \ay%d\ax", iMaxResults); 
-            SaveSettings (); 
-         } 
-         bAnyParams = true; 
-	  } else if (strcmp(cWord, "/item") == 0) {
-		  cWord = strtok_s(NULL, " ", &next_token1);
-		  if (atoi(cWord) > 0) {
-			  iFindItemID = atoi(cWord);
-		  }
-		  bAnyParams = true;
-	  }
-	  else if (strcmp(cWord, "/click") == 0) {
-		  cWord = strtok_s(NULL, " ", &next_token1);
-		  if (cWord)
-		  {
-			  if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
-			  {
-				  bClickLinks = true;
-			  }
-			  else
-			  {
-				  bClickLinks = false;
-			  }
-		  }
-		  else
-		  {
-			  bClickLinks = !bClickLinks;
-		  }
-		  WriteChatf("MQ2LinkDB: Will%sauto-click exact match links it generates.", bClickLinks ? " ":" NOT ");
-		  SaveSettings();
-		  bAnyParams = true;
-	  }
-	  else if (strcmp(cWord, "/scan") == 0)
-	  {
-		  cWord = strtok_s(NULL, " ", &next_token1);
-		  if (cWord)
-		  {
-			  if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
-			  {
-				  bScanChat = true;
-			  }
-			  else {
-				  bScanChat = false;
-			  }
-		  }
-		  else
-		  {
-			  bScanChat = !bScanChat;
-		  }
-		  WriteChatf("MQ2LinkDB: Will%sscan incoming chat for item links.", bScanChat ? " ":" NOT ");
-		  SaveSettings();
-		  bAnyParams = true;
-      } else if (strcmp (cWord, "/user") == 0) { 
-         cWord = strtok_s(NULL, " ", &next_token1);
+	int iItemID = ItemID(cLink);
+	iAddedThisSession++;
+	presentItemIDs.insert(iItemID);
 
-		 WriteChatf ("MQ2LinkDB: Will respond to tells from %s.", cWord);
-		 WritePrivateProfileString("Toons", cWord, "on", INIFileName); 
+	if (!bQuietMode)
+	{
+		WriteChatf("MQ2LinkDB: Stored link for item ID: \ay%d\ax (\ay%d\ax stored this session)", ItemID(cLink), iAddedThisSession);
+	}
+}
 
-		 bAnyParams = true; 
-	  }
-	  else if (strcmp(cWord, "/import") == 0) {
-		  if (FindFirstItem()) {
-			  ConvertItemsDotTxt();
-			  bAnyParams = true;
-		  }
-	  } else if (strcmp (cWord, "/verify") == 0) {
-         cWord = strtok_s(NULL, " ", &next_token1);
+static char* LinkExtract(char* cLink)
+{
+	std::string sTemp = cLink;
+	char* cTemp = sTemp.data();
 
-         iVerifyCount = 1;
-         if (atoi(cWord) > 0) {
-            iVerifyCount = atoi(cWord);
-         } 
+	char* cEnd = strchr(cTemp + START_LINKTEXT, '\x12');
+	int iLen = 1;
 
-		 VerifyLinks ();
+	if (cEnd != nullptr)
+	{
+		if (*(cTemp + 1) == '\x30')      // Item link
+		{
+			*(cEnd + 1) = '\0';
+			iLen = strlen(cTemp);
 
-		 bAnyParams = true;
-	  }
+			//WriteChatf ("MQ2LinkDB: Chat - %s", cTemp + 1);
 
-      cWord = strtok_s(NULL, " ", &next_token1);
-   } 
+			if (!FindLink(cTemp))
+			{
+				StoreLink(cTemp);
+			}
+		}
+	}
 
-   if (!bAnyParams) { 
-      WriteChatf ("%s",MY_STRING); 
-	  WriteChatf ("MQ2LinkDB: Syntax: \ay/link [/max n] [/scan on|off] [/click on|off] [/import \ar(needs at least 1 item in inventory or on cursor)\ay] [/item #][/verify #][search string]\ax"); 
-      if (bKnowTotal) { 
-         WriteChatf ("MQ2LinkDB: \ay%d\ax links in database, \ay%d\ax links added this session", iTotalInDB, iAddedThisSession); 
-      } else { 
-         WriteChatf ("MQ2LinkDB: \ay%d\ax links added this session", iAddedThisSession); 
-      } 
-      WriteChatf ("MQ2LinkDB: Max Results \ay%d\ax", iMaxResults); 
-      if (bScanChat) { 
-         WriteChatf ("MQ2LinkDB: Scanning incoming chat for item links"); 
-      } else { 
-         WriteChatf ("MQ2LinkDB: Not scanning incoming chat"); 
-      } 
-      if (bClickLinks) { 
-         WriteChatf ("MQ2LinkDB: Auto-clicking links on exact matches"); 
-      } else { 
-         WriteChatf ("MQ2LinkDB: Not auto-clicking links on exact matches");
-      } 
-   } 
-} 
+	return cLink + iLen;
+}
+
+static void ChatTell(SPAWNINFO* pChar, char* cLine)
+{
+	DebugSpew("MQ2LinkDB::ChatTell(%s)", cLine);
+	char szCmd[MAX_STRING];
+
+	if (!bReplyMode)
+	{
+		sprintf_s(szCmd, "Linkdb told you, '%s'", cLine);
+		dsp_chat_no_events(szCmd, USERCOLOR_TELL, false);
+	}
+	else
+	{
+		sprintf_s(szCmd, ";tell %s %s", pChar->Name, cLine);
+
+		//WriteChatf("MQ2LinkDB::DoCommand(%s)", cTemp);
+		//pEverQuest->send_tell(pChar->Name,cLine);
+		DoCommand(pChar, szCmd);
+		//dsp_chat_no_events(szCmd, USERCOLOR_TELL, false);
+	}
+}
+
+template <unsigned int _Size>
+static void DoParameters(char(&cParams)[_Size])
+{
+	bool bAnyParams = false;
+	_strlwr_s(cParams);
+	char* cWord = nullptr;
+	char* next_token1 = nullptr;
+
+	cWord = strtok_s(cParams, " ", &next_token1);
+	while (cWord != nullptr)
+	{
+		if (strcmp(cWord, "/quiet") == 0)
+		{
+			bQuietMode = !bQuietMode;
+			WriteChatf("MQ2LinkDB: Quiet mode \ay%s\ax", bQuietMode ? "on" : "off");
+			bAnyParams = true;
+
+		}
+		else if (strcmp(cWord, "/max") == 0)
+		{
+			cWord = strtok_s(nullptr, " ", &next_token1);
+			if (atoi(cWord) > 0)
+			{
+				iMaxResults = atoi(cWord);
+				WriteChatf("MQ2LinkDB: Max results now \ay%d\ax", iMaxResults);
+				SaveSettings();
+			}
+			bAnyParams = true;
+		}
+		else if (strcmp(cWord, "/item") == 0)
+		{
+			cWord = strtok_s(nullptr, " ", &next_token1);
+			if (atoi(cWord) > 0)
+			{
+				iFindItemID = atoi(cWord);
+			}
+			bAnyParams = true;
+		}
+		else if (strcmp(cWord, "/click") == 0)
+		{
+			cWord = strtok_s(nullptr, " ", &next_token1);
+			if (cWord)
+			{
+				if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
+				{
+					bClickLinks = true;
+				}
+				else
+				{
+					bClickLinks = false;
+				}
+			}
+			else
+			{
+				bClickLinks = !bClickLinks;
+			}
+
+			WriteChatf("MQ2LinkDB: Will%sauto-click exact match links it generates.", bClickLinks ? " " : " NOT ");
+			SaveSettings();
+			bAnyParams = true;
+		}
+		else if (strcmp(cWord, "/scan") == 0)
+		{
+			cWord = strtok_s(nullptr, " ", &next_token1);
+			if (cWord)
+			{
+				if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
+				{
+					bScanChat = true;
+				}
+				else
+				{
+					bScanChat = false;
+				}
+			}
+			else
+			{
+				bScanChat = !bScanChat;
+			}
+			WriteChatf("MQ2LinkDB: Will%sscan incoming chat for item links.", bScanChat ? " " : " NOT ");
+			SaveSettings();
+			bAnyParams = true;
+		}
+		else if (strcmp(cWord, "/user") == 0)
+		{
+			cWord = strtok_s(nullptr, " ", &next_token1);
+
+			WriteChatf("MQ2LinkDB: Will respond to tells from %s.", cWord);
+			WritePrivateProfileString("Toons", cWord, "on", INIFileName);
+
+			bAnyParams = true;
+		}
+		else if (strcmp(cWord, "/import") == 0)
+		{
+			if (FindFirstItem())
+			{
+				ConvertItemsDotTxt();
+				bAnyParams = true;
+			}
+		}
+		else if (strcmp(cWord, "/verify") == 0)
+		{
+			cWord = strtok_s(nullptr, " ", &next_token1);
+
+			iVerifyCount = 1;
+			if (atoi(cWord) > 0)
+			{
+				iVerifyCount = atoi(cWord);
+			}
+
+			VerifyLinks();
+
+			bAnyParams = true;
+		}
+
+		cWord = strtok_s(nullptr, " ", &next_token1);
+	}
+
+	if (!bAnyParams)
+	{
+		WriteChatf("%s", MY_STRING);
+		WriteChatf("MQ2LinkDB: Syntax: \ay/link [/max n] [/scan on|off] [/click on|off] [/import \ar(needs at least 1 item in inventory or on cursor)\ay] [/item #][/verify #][search string]\ax");
+		if (bKnowTotal)
+		{
+			WriteChatf("MQ2LinkDB: \ay%d\ax links in database, \ay%d\ax links added this session", presentItemIDs.size(), iAddedThisSession);
+		}
+		else
+		{
+			WriteChatf("MQ2LinkDB: \ay%d\ax links added this session", iAddedThisSession);
+		}
+		WriteChatf("MQ2LinkDB: Max Results \ay%d\ax", iMaxResults);
+		if (bScanChat)
+		{
+			WriteChatf("MQ2LinkDB: Scanning incoming chat for item links");
+		}
+		else
+		{
+			WriteChatf("MQ2LinkDB: Not scanning incoming chat");
+		}
+		if (bClickLinks)
+		{
+			WriteChatf("MQ2LinkDB: Auto-clicking links on exact matches");
+		}
+		else
+		{
+			WriteChatf("MQ2LinkDB: Not auto-clicking links on exact matches");
+		}
+	}
+}
 
 // This routine will send a link click to EQ to retrieve the item data
-VOID ClickLink (PSPAWNINFO pChar, PCHAR szLink)
+void ClickLink(SPAWNINFO* pChar, char* szLink)
 {
-	DebugSpew("MQ2LinkDB::ClickLink(%s)",szLink);
-	//WriteChatf("MQ2LinkDB::ClickLink(%s)",szLink);
+	DebugSpew("MQ2LinkDB::ClickLink(%s)", szLink);
 
-	char szCommand[MAX_STRING] = {0};
-	char szLinkStruct[MAX_STRING] = {0};
-	strncpy_s(szLinkStruct,szLink+2,START_LINKTEXT-2);
+	char szCommand[MAX_STRING] = { 0 };
+	char szLinkStruct[MAX_STRING] = { 0 };
+	strncpy_s(szLinkStruct, szLink + 2, START_LINKTEXT - 2);
 
 	sprintf_s(szCommand, "/notify ChatWindow CW_ChatOutput link %s", szLinkStruct);
 	DoCommand(pChar, szCommand);
 }
 
-// 
 // Do the actual local file search. This searches the local name->link
-// data file line by line returning matches in the pre-alloced array
-// passed in. That memory is yours, not mine sucker. Be kind.
-template <unsigned int _Size>int SearchLinkDB(char** ppOutputArray, CHAR(&searchText)[_Size], BOOL bExact)
+// data file line by line returning matches.
+static std::vector<std::string> SearchLinkDB(const char* szSearchText, bool bExact)
 {
-    char** ppCurrent = ppOutputArray;
-
-    if (abPresent == NULL) { 
-        abPresent = new unsigned char[MAX_PRESENT / 8 + 1];
-    }
-    memset (abPresent, 0, MAX_PRESENT / 8 + 1);
+	std::vector<std::string> results;
 
 	iNextID = 0; iCurrentID = 0;
-    int iFound = 0, iTotal = 0;
-	FILE * File = 0;
+	int iFound = 0, iTotal = 0;
+	FILE* File = nullptr;
 	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	if (err)
+	{
+		WriteChatf("MQ2LinkDB: No item database yet");
+		return results;
+	}
 
-	if (!err) {
-		if (!bQuietMode) { 
-			WriteChatf ("MQ2LinkDB: Searching for '\ay%s\ax'...", searchText);
+	presentItemIDs.clear();
+
+	if (!bQuietMode)
+	{
+		WriteChatf("MQ2LinkDB: Searching for '\ay%s\ax'...", szSearchText);
+	}
+
+	char cLine[256] = { 0 };
+	char cCopy[256] = { 0 };
+	bool bNextID = false;
+
+	while (fgets(cLine, sizeof(cLine), File) != nullptr)
+	{
+		int iItemID = ItemID(cLine);
+		presentItemIDs.insert(iItemID);
+
+		if (bNextID)
+		{
+			bNextID = false;
+			iNextID = iItemID;
 		}
-        _strlwr_s (searchText);
-		char cLine[256] = { 0 };
-		char cCopy[256] = { 0 };
-		bool bNextID = false;
 
-        while (fgets (cLine, sizeof (cLine), File) != NULL)
-        {
-            int iItemID = ItemID (cLine);
-			if (bNextID) {
-				bNextID = false;
-				iNextID = iItemID;
+		cLine[strlen(cLine) - 1] = '\0';   // No LF pls
+		strcpy_s(cCopy, cLine + START_LINKTEXT);
+
+		if ((iItemID == iFindItemID) || ci_equals(cCopy, szSearchText, bExact))
+		{
+			results.emplace_back(cLine);
+
+			if (iFindItemID || (strlen(cLine + START_LINKTEXT + 1) == strlen(szSearchText)
+				&& _memicmp(cLine + START_LINKTEXT, szSearchText, strlen(szSearchText)) == 0))
+			{
+				bNextID = true;
 			}
-            unsigned char cOR = 1 << (iItemID % 8);
-            abPresent[iItemID / 8] |= cOR;
 
-            cLine[strlen (cLine) - 1] = '\0';   // No LF pls
-            strcpy_s(cCopy, cLine + START_LINKTEXT);
-            _strlwr_s(cCopy);
+			iFound++;
+		}
 
-            if ((iItemID == iFindItemID) || (bExact && strncmp(cCopy, searchText, strlen(cCopy) - 1) == 0) ||
-                (!bExact && strstr(cCopy, searchText) != NULL)) {
-                if (iFound < MAX_INTERNAL_RESULTS) {
-					
-                    *ppCurrent = _strdup(cLine);
-                    ppCurrent++;
-                }
-	            if (iFindItemID || (strlen (cLine + START_LINKTEXT + 1) == strlen (searchText) && _memicmp (cLine + START_LINKTEXT, searchText, strlen (searchText)) == 0)) { 
-					bNextID = true;
-				}
+		iTotal++;
+	}
 
-                iFound++;
-            }
+	bKnowTotal = true;
+	fclose(File);
 
-            iTotal++;
-        }
-
-        bKnowTotal = true;
-        iTotalInDB = iTotal;
-
-        fclose (File);
-	} else {
-        WriteChatf ("MQ2LinkDB: No item database yet");
-    }
-
-    return iFound;
+	return results;
 }
 
+int VerifyLinks()
+{
+	constexpr int VERIFYLINKCOUNT = 100;
 
-// 
-// int VerifyLinks (void) 
-// 
-int VerifyLinks (void) 
-{ 
-#define VERIFYLINKCOUNT 100
+	char cFilename[MAX_PATH];
+	sprintf_s(cFilename, "%s\\links.txt", gPathResources);
+	FILE* File = nullptr;
 
-   char cFilename[MAX_PATH];
-   sprintf_s(cFilename,"%s\\links.txt", gszINIPath); 
-   FILE * File = 0;
-   errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	if (!err)
+	{
+		//WriteChatf ("MQ2LinkDB: Verifying links.txt...");
+		char cLine[MAX_STRING];
 
-   if (!err) {
-      //WriteChatf ("MQ2LinkDB: Verifying links.txt..."); 
-      char cLine[MAX_STRING]; 
+		int iLinkCount = 0;
+		int iEndingLinkCount = iVerifyCount + VERIFYLINKCOUNT - 1;
 
-      int iLinkCount = 0;
-	  int iEndingLinkCount = iVerifyCount+VERIFYLINKCOUNT-1;
+		while (fgets(cLine, MAX_STRING, File) != nullptr)
+		{
+			cLine[strlen(cLine) - 1] = '\0';
+			iLinkCount++;
 
-      while (fgets (cLine, MAX_STRING, File) != NULL) { 
-         cLine[strlen (cLine) - 1] = '\0';
-		 iLinkCount++;
+			if (iLinkCount >= iVerifyCount)
+			{
+				ChatTell(pLocalPlayer, cLine);
+				if (iLinkCount >= iEndingLinkCount) break;
+			}
+		}
 
-		 if (iLinkCount >= iVerifyCount) {
-            ChatTell((PSPAWNINFO)pLocalPlayer, cLine);
-			if (iLinkCount >= iEndingLinkCount) break;
-		 }
-	  }
+		if (iLinkCount < iVerifyCount)
+		{
+			WriteChatf("MQ2LinkDB: \ayUnable to skip to line \ar%d\ay, only \ar%d\ay lines exist in links.txt", iVerifyCount, iLinkCount);
+		}
+		else
+		{
+			WriteChatf("MQ2LinkDB: Complete! \ay%d\ax links (from \ay%d\ax to \ay%d\ax) verified", iLinkCount - iVerifyCount + 1, iVerifyCount, iLinkCount);
+		}
+		fclose(File);
+	}
+	else
+	{
+		WriteChatf("MQ2LinkDB: \arSource file not found (links.txt)");
+	}
 
-	  if (iLinkCount < iVerifyCount) {
-		 WriteChatf ("MQ2LinkDB: \ayUnable to skip to line \ar%d\ay, only \ar%d\ay lines exist in links.txt", iVerifyCount, iLinkCount);
-	  } else {
-         WriteChatf ("MQ2LinkDB: Complete! \ay%d\ax links (from \ay%d\ax to \ay%d\ax) verified", iLinkCount-iVerifyCount+1, iVerifyCount, iLinkCount); 
-	  }
-      fclose (File); 
-   } else { 
-      WriteChatf ("MQ2LinkDB: \arSource file not found (links.txt)"); 
-   } 
+	return 0;
+}
 
-   return 0; 
-} 
-
-
-// 
-// static VOID CommandLink (PSPAWNINFO pChar, PCHAR szLine) 
-// 
-static VOID CommandLink(PSPAWNINFO pChar, PCHAR szLine) 
-{ 
-	CHAR szLLine[MAX_STRING] = { 0 };
+static void CommandLink(SPAWNINFO* pChar, char* szLine)
+{
+	char szLLine[MAX_STRING] = { 0 };
 	strcpy_s(szLLine, szLine);
 	iFindItemID = 0;
-	bRunNextCommand = TRUE;
-	if (strlen (szLLine) < 3) {
-		CHAR szEmpty[MAX_STRING] = { 0 };
-		DoParameters(szEmpty); 
-		return;       // We don't list entire DB. that's just not funny 
-	} 
+	bRunNextCommand = true;
 
-	if (szLLine[0] == '/' || szLLine[0] == '-') { 
-		DoParameters (szLLine); 
+	if (strlen(szLLine) < 3)
+	{
+		char szEmpty[MAX_STRING] = { 0 };
+		DoParameters(szEmpty);
+		return;       // We don't list entire DB. that's just not funny
+	}
+
+	if (szLLine[0] == '/' || szLLine[0] == '-')
+	{
+		DoParameters(szLLine);
 		if (!iFindItemID)
-			return; 
-	} 
+			return;
+	}
 
-	char ** cArray = new char * [MAX_INTERNAL_RESULTS]; 
-	memset (cArray, 0, sizeof (char *) * MAX_INTERNAL_RESULTS); 
+	std::vector<std::string> results = SearchLinkDB(szLLine, false);
 
-	int iFound = SearchLinkDB(cArray, szLLine, false); 
+	bool bForcedExtra = false;
 
-	bool bForcedExtra = false; 
-	int iMaxLoop = (iFound > MAX_INTERNAL_RESULTS ? MAX_INTERNAL_RESULTS : iFound); 
-	if (iFound > 0) { 
-		// Sort the list 
-		for (int j = 0; j < iMaxLoop; j++) { 
-			for (int i = 0; i < iMaxLoop - 1; i++) { 
-				if (strcmp (cArray[i] + START_LINKTEXT, cArray[i + 1] + START_LINKTEXT) > 0) { 
-					char * cTemp = cArray[i]; 
-					cArray[i] = cArray[i + 1]; 
-					cArray[i + 1] = cTemp; 
-				} 
-			} 
-		} 
+	if (!results.empty())
+	{
+		// Sort the list
+		std::sort(results.begin(), results.end(), [](const std::string& a, const std::string& b)
+		{
+			return std::string_view{ a }.substr(START_LINKTEXT) < std::string_view{ b }.substr(START_LINKTEXT);
+		});
 
-		// Show list 
-		for (int i = 0; i < iMaxLoop; i++) { 
-			bool bShow = i < iMaxResults; 
+		// Show list
+		for (size_t i = 0; i < results.size(); ++i)
+		{
+			bool bShow = i < iMaxResults;
+
+			const char* szResult = results[i].c_str();
 			char cTemp[256] = { 0 };
-            strcpy_s(cTemp, cArray[i]); 
+			strcpy_s(cTemp, szResult);
 
-            if (IsAuged (cArray[i])) { 
-               strcat_s(cTemp, " (Augmented)"); 
-            } 
+			if (IsAuged(szResult))
+			{
+				strcat_s(cTemp, " (Augmented)");
+			}
 
-            if (iFindItemID || (strlen (cArray[i] + START_LINKTEXT + 1) == strlen(szLLine) && _memicmp(cArray[i] + START_LINKTEXT, szLLine, strlen(szLLine)) == 0)) { 
-			   strcpy_s(cLink, cArray[i]);
-			   strcat_s(cTemp, " <Exact Match>"); 
-               bShow = true;        // We display this result even if we've already shown iMaxResults count 
-               bForcedExtra = i >= iMaxResults; 
-               //if (bClickLinks && !bReplyMode) ClickLink(pChar, cArray[i]);
-               if (bClickLinks && !bReplyMode)
-				   ClickLink(pChar, cLink);
-            } 
+			if (iFindItemID
+				|| (strlen(szResult + START_LINKTEXT + 1) == strlen(szLLine)
+					&& _memicmp(szResult + START_LINKTEXT, szLLine, strlen(szLLine)) == 0))
+			{
+				strcpy_s(cLink, szResult);
+				strcat_s(cTemp, " <Exact Match>");
+				bShow = true;        // We display this result even if we've already shown iMaxResults count
+				bForcedExtra = i >= iMaxResults;
+				if (bClickLinks && !bReplyMode)
+					ClickLink(pChar, cLink);
+			}
 
-            if (bShow) { 
-               ChatTell((PSPAWNINFO)pLocalPlayer, cTemp);
-            } 
-
-            free (cArray[i]); 
-            cArray[i] = NULL; 
-		} 
-	} 
-
-	delete (cArray); 
+			if (bShow)
+			{
+				ChatTell(pLocalPlayer, cTemp);
+			}
+		}
+	}
 
 	char cTemp3[128] = { 0 };
 	char cTemp[128] = { 0 };
-	sprintf_s(cTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", iFound, iTotalInDB); 
-	sprintf_s(cTemp, "Found %d items from database of %d total items", iFound, iTotalInDB); 
+	sprintf_s(cTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", results.size(), iTotalInDB);
+	sprintf_s(cTemp, "Found %d items from database of %d total items", results.size(), iTotalInDB);
 
-	if (iFound > iMaxResults) { 
-		char cTemp2[64]; 
-		sprintf_s(cTemp2, " - \arList capped to \ay%d\ar results", iMaxResults); 
-		strcat_s(cTemp3, cTemp2); 
+	if (results.size() > iMaxResults)
+	{
+		char cTemp2[64];
+		sprintf_s(cTemp2, " - \arList capped to \ay%d\ar results", iMaxResults);
+		strcat_s(cTemp3, cTemp2);
 
-		sprintf_s(cTemp2, " - List capped to %d results", iMaxResults); 
-		strcat_s(cTemp, cTemp2); 
+		sprintf_s(cTemp2, " - List capped to %d results", iMaxResults);
+		strcat_s(cTemp, cTemp2);
 
-		if (bForcedExtra) { 
-			strcat_s(cTemp, " plus exact match"); 
-			strcat_s(cTemp3, " plus exact match"); 
-		} 
-	} 
-
-	if (!bQuietMode) { 
-		WriteChatf("%s",cTemp3); 
+		if (bForcedExtra)
+		{
+			strcat_s(cTemp, " plus exact match");
+			strcat_s(cTemp3, " plus exact match");
+		}
 	}
-	ChatTell((PSPAWNINFO)pLocalPlayer, cTemp);
+
+	if (!bQuietMode)
+	{
+		WriteChatf("%s", cTemp3);
+	}
+	ChatTell(pLocalPlayer, cTemp);
 	bReplyMode = false;
-} 
+}
 
-// Called once, when the plugin is to initialize 
-PLUGIN_API VOID InitializePlugin(VOID) 
-{ 
-   DebugSpewAlways("Initializing MQ2LinkDB"); 
-   AddCommand("/link",CommandLink); 
-   AddMQ2Data("LinkDB",dataLinkDB); 
+// Called once, when the plugin is to initialize
+PLUGIN_API void InitializePlugin()
+{
+	DebugSpewAlways("Initializing MQ2LinkDB");
+	AddCommand("/link", CommandLink);
+	AddMQ2Data("LinkDB", dataLinkDB);
 
-   pLinkType = new MQ2LinkType; 
+	pLinkType = new MQ2LinkType;
+	LoadSettings();
+}
 
-   LoadSettings (); 
+// Called once, when the plugin is to shutdown
+PLUGIN_API void ShutdownPlugin()
+{
+	DebugSpewAlways("Shutting down MQ2LinkDB");
+	RemoveCommand("/link");
+	RemoveMQ2Data("LinkDB");
 
-   abPresent = NULL; 
-} 
+	delete pLinkType;
+}
 
-// Called once, when the plugin is to shutdown 
-PLUGIN_API VOID ShutdownPlugin(VOID) 
-{ 
-   DebugSpewAlways("Shutting down MQ2LinkDB"); 
-   RemoveCommand("/link"); 
-   RemoveMQ2Data("LinkDB"); 
-
-   delete pLinkType; 
-
-   free (abPresent); 
-   abPresent = NULL; 
-} 
 /*
-1 a.ITEM_NUMBER
-2 a.NAME
-3 a.LORE_DESCRIPTION
-4 a.ADVANCED_LORE_TEXT_FILENAME
-5 a.TYPE
-6 a.VALUE
-7 CONCAT('IT',a.ACTOR_TAG)
-8 a.IMAGE_NUMBER
-9 a.SIZE_ITEM
-10 a.WEIGHT
-11 a.MAX_ITEM_COUNT
-12 a.ITEM_CLASS
-13 a.IS_LORE
-14 a.IS_ARTIFACT
-15 a.IS_SUMMONED
-16 a.REQUIRED_LEVEL
-17 a.RECOMMENDED_LEVEL
-18 a.RECOMMENDED_SKILL
-19 a.NO_DROP
-20 a.RENTABLE
-21 a.NO_ALT_TRANSFER
-22 a.FV_NO_DROP
-23 a.NO_PET_EQUIP
-24 a.CHARM
-25 a.EARS
-26 a.HEAD
-27 a.FACE
-28 a.NECK
-29 a.SHOULDERS
-30 a.ARMS
-31 a.BACK
-32 a.WRISTS
-33 a.RANGE
-34 a.HANDS
-35 a.PRIMARY
-36 a.SECONDARY
-37 a.FINGERS
-38 a.CHEST
-39 a.LEGS
-40 a.FEET
-41 a.WAIST
-42 a.POWER_SLOT
-43 a.AMMO
-44 a.WARRIOR_USEABLE
-45 a.CLERIC_USEABLE
-46 a.PALADIN_USEABLE
-47 a.RANGER_USEABLE
-48 a.SHADOWKNIGHT_USEABLE
-49 a.DRUID_USEABLE
-50 a.MONK_USEABLE
-51 a.BARD_USEABLE
-52 a.ROGUE_USEABLE
-53 a.SHAMAN_USEABLE
-54 a.NECROMANCER_USEABLE
-55 a.WIZARD_USEABLE
-56 a.MAGICIAN_USEABLE
-57 a.ENCHANTER_USEABLE
-58 a.BEASTLORD_USEABLE
-59 a.BERSERKER_USEABLE
-60 a.MERCENARY_USABLE
-61 a.HUMAN_USEABLE
-62 a.BARBARIAN_USEABLE
-63 a.ERUDITE_USEABLE
-64 a.WOODELF_USEABLE
-65 a.HIGHELF_USEABLE
-66 a.DARKELF_USEABLE
-67 a.HALFELF_USEABLE
-68 a.DWARF_USEABLE
-69 a.TROLL_USEABLE
-70 a.OGRE_USEABLE
-71 a.HALFLING_USEABLE
-72 a.GNOME_USEABLE
-73 a.IKSAR_USEABLE
-74 a.VAHSHIR_USEABLE
-75 a.FROGLOK_USEABLE
-76 a.DRAKKIN_USEABLE
-77 a.TEMPLATE_USEABLE
-78 a.REQ_AGNOSTIC
-79 a.REQ_BERTOXXULOUS
-80 a.REQ_BRELLSERILIS
-81 a.REQ_CAZICTHULE
-82 a.REQ_EROLLISIMARR
-83 a.REQ_FIZZLETHORP
-84 a.REQ_INNORUUK
-85 a.REQ_KARANA
-86 a.REQ_MITHMARR
-87 a.REQ_PREXUS
-88 a.REQ_QUELLIOUS
-89 a.REQ_RALLOSZEK
-90 a.REQ_RODCETNIFE
-91 a.REQ_SOLUSEKRO
-92 a.REQ_TRIBUNAL
-93 a.REQ_TUNARE
-94 a.REQ_VEESHAN
-95 a.MODFACTION1_NUM
-96 a.MODFACTION1_VALUE
-97 a.MODFACTION2_NUM
-98 a.MODFACTION2_VALUE
-99 a.MODFACTION3_NUM
-100 a.MODFACTION3_VALUE
-101 a.MODFACTION4_NUM
-102 a.MODFACTION4_VALUE
-103 a.GEM_SIZE
-104 a.SOCKET_CLASS
-105 a.SOLVENT_ITEM_ID
-106 a.POINT_TYPE
-107 a.POINT_THEME_BIT_MASK
-108 a.POINT_COST
-109 a.POINT_BUY_BACK_PERCENT
-110 a.ADVENTURE_ESTEEM_NEEDED
-111 a.FOOD_DURATION
-112 a.LIGHT_TYPE
-113 a.MAGIC
-114 a.SKIN_TYPE
-115 a.ARMOR_VARIANT
-116 a.ARMOR_MAT
-117 a.R_TINT
-118 a.G_TINT
-119 a.B_TINT
-120 a.ANIMATION_OVERRIDE
-121 a.TINT_PALETTE_INDEX
-122 a.MERCHANT_MULTIPLIER
-123 a.LOG
-124 a.LOOT_LOG
-125 a.REQ_AVATAR
-126 a.SKILL_MOD
-127 a.SKILL_BONUS
-128 a.SPECIAL_SKILL_CAP
-129 a.POOF_ON_DEATH
-130 a.INSTRUMENT_TYPE
-131 a.INSTRUMENT_PERCENTAGE_MOD
-132 a.SCRIPTID
-133 a.SCRIPT_FILE_NAME
-134 a.TRADESKILL
-135 a.TRIBUTE_VALUE
-136 a.GUILD_TRIBUTE_VALUE
-137 a.HIGH_PROFILE
-138 a.IS_POTION_BELT_ALLOWED
-139 a.NUM_POTION_SLOTS
-140 a.CAN_USE_FILTER_ID
-141 a.RIGHT_CLICK_SCRIPT_ID
-142 a.IS_QUEST_ITEM
-143 a.NO_ENDLESS_QUIVER
-144 a.POWER_CHARGES
-145 a.POWER_PURITY
-146 a.IS_EPIC_1
-147 a.IS_EPIC_15
-148 a.IS_EPIC_2
-149 b.STR_MOD
-150 b.INT_MOD
-151 b.WIS_MOD
-152 b.AGI_MOD
-153 b.DEX_MOD
-154 b.STA_MOD
-155 b.CHA_MOD
-156 b.HP_MOD
-157 b.MANA_MOD
-158 b.AC_MOD
-159 b.ENDURANCE_MOD
-160 b.SAVE_MAGIC_MOD
-161 b.SAVE_FIRE_MOD
-162 b.SAVE_COLD_MOD
-163 b.SAVE_DISEASE_MOD
-164 b.SAVE_POISON_MOD
-165 b.SAVE_CORRUPTION_MOD
-166 c.HASTE
-167 c.ATTACK
-168 c.HP_REGEN
-169 c.MANA_REGEN
-170 c.ENDURANCE_REGEN
-171 c.DAMAGE_SHIELD
-172 c.COMBAT_EFFECTS
-173 c.SHIELDING
-174 c.SPELL_SHIELDING
-175 c.AVOIDANCE
-176 c.ACCURACY
-177 c.STUN_RESIST
-178 c.STRIKETHROUGH
-179 c.SKILL_DAMAGE_NUM
-180 c.SKILL_DAMAGE_MOD
-181 c.DOT_SHIELDING
-182 d.DELAY
-183 d.BASE_DAMAGE
-184 d.ITEM_RANGE
-185 d.BANE_RACE
-186 d.BANE_BODYTYPE
-187 d.RACE_BANE_DAMAGE
-188 d.BODYTYPE_BANE_DAMAGE
-189 d.ELEMENT_CRIT
-190 d.ELEMENT_DAMAGE
-191 e.CONTAINER_TYPE
-192 e.CONTAINER_CAPACITY
-193 e.CONTAINER_ITEM_SIZE_LIMIT
-194 e.CONTAINER_WEIGHT_RDX
-195 f.NOTE_TYPE
-196 f.NOTE_LANGUAGE
-197 f.NOTE_TEXTFILE
-198 d.BACKSTAB_DAMAGE
-199 c.DAMAGE_SHIELD_MITIGATION
-200 b.HEROIC_STR_MOD
-201 b.HEROIC_INT_MOD
-202 b.HEROIC_WIS_MOD
-203 b.HEROIC_AGI_MOD
-204 b.HEROIC_DEX_MOD
-205 b.HEROIC_STA_MOD
-206 b.HEROIC_CHA_MOD
-207 b.HEROIC_SAVE_MAGIC_MOD
-208 b.HEROIC_SAVE_FIRE_MOD
-209 b.HEROIC_SAVE_COLD_MOD
-210 b.HEROIC_SAVE_DISEASE_MOD
-211 b.HEROIC_SAVE_POISON_MOD
-212 b.HEROIC_SAVE_CORRUPTION_MOD
-213 c.HEAL_AMOUNT
-214 c.SPELL_DAMAGE
-215 c.CLAIRVOYANCE
-216 a.SUB_CLASS
-217 a.LOGIN_REGISTRATION_REQUIRED
-218 a.LAUNCH_SCRIPT_ID
-219 a.HEIRLOOM
-220 g.EQG_ID
-221 g.PLACEMENT_FLAGS
-222 g.IGNORE_COLLISIONS
-223 g.PLACEMENT_TYPE
-224 g.REAL_ESTATE_DEF_ID
-225 g.PLACEABLE_SCALE_RANGE_MIN
-226 g.PLACEABLE_SCALE_RANGE_MAX
-227 g.REAL_ESTATE_UPKEEP_ID
-228 g.MAX_PER_REAL_ESTATE
-229 g.NPC_FILENAME
-230 g.TROPHY_BENEFIT_ID
-231 g.DISABLE_PLACEMENT_ROTATION
-232 g.DISABLE_FREE_PLACEMENT
-233 g.NPC_RESPAWN_INTERVAL
-234 g.PLACEABLE_SCALE_DEFAULT
-235 g.PLACEABLE_ORIENTATION_HEADING
-236 g.PLACEABLE_ORIENTATION_PITCH
-237 g.PLACEABLE_ORIENTATION_ROLL
-238 a.NO_BANK
-239 CONCAT('IT',a.SECONDARY_ACTOR_TAG)
-240 g.IS_INTERACTIVE_OBJECT
-241 a.SKILL_MOD_OFFSET
-242 a.SOCKET_SUB_CLASSES
-243 a.NEW_ARMOR_ID
-244 a.ITEM_RANK
-245 a.SOCKET_SKIN_TYPE_MASK
-246 a.IS_COLLECTIBLE
-247 a.NO_DESTROY
-248 a.NO_NPC
-249 a.NO_ZONE
-250 a.CREATOR_ID
-251 a.NO_GROUND
-252 a.NO_LOOT
+	1 a.ITEM_NUMBER
+	2 a.NAME
+	3 a.LORE_DESCRIPTION
+	4 a.ADVANCED_LORE_TEXT_FILENAME
+	5 a.TYPE
+	6 a.VALUE
+	7 CONCAT('IT',a.ACTOR_TAG)
+	8 a.IMAGE_NUMBER
+	9 a.SIZE_ITEM
+	10 a.WEIGHT
+	11 a.MAX_ITEM_COUNT
+	12 a.ITEM_CLASS
+	13 a.IS_LORE
+	14 a.IS_ARTIFACT
+	15 a.IS_SUMMONED
+	16 a.REQUIRED_LEVEL
+	17 a.RECOMMENDED_LEVEL
+	18 a.RECOMMENDED_SKILL
+	19 a.NO_DROP
+	20 a.RENTABLE
+	21 a.NO_ALT_TRANSFER
+	22 a.FV_NO_DROP
+	23 a.NO_PET_EQUIP
+	24 a.CHARM
+	25 a.EARS
+	26 a.HEAD
+	27 a.FACE
+	28 a.NECK
+	29 a.SHOULDERS
+	30 a.ARMS
+	31 a.BACK
+	32 a.WRISTS
+	33 a.RANGE
+	34 a.HANDS
+	35 a.PRIMARY
+	36 a.SECONDARY
+	37 a.FINGERS
+	38 a.CHEST
+	39 a.LEGS
+	40 a.FEET
+	41 a.WAIST
+	42 a.POWER_SLOT
+	43 a.AMMO
+	44 a.WARRIOR_USEABLE
+	45 a.CLERIC_USEABLE
+	46 a.PALADIN_USEABLE
+	47 a.RANGER_USEABLE
+	48 a.SHADOWKNIGHT_USEABLE
+	49 a.DRUID_USEABLE
+	50 a.MONK_USEABLE
+	51 a.BARD_USEABLE
+	52 a.ROGUE_USEABLE
+	53 a.SHAMAN_USEABLE
+	54 a.NECROMANCER_USEABLE
+	55 a.WIZARD_USEABLE
+	56 a.MAGICIAN_USEABLE
+	57 a.ENCHANTER_USEABLE
+	58 a.BEASTLORD_USEABLE
+	59 a.BERSERKER_USEABLE
+	60 a.MERCENARY_USABLE
+	61 a.HUMAN_USEABLE
+	62 a.BARBARIAN_USEABLE
+	63 a.ERUDITE_USEABLE
+	64 a.WOODELF_USEABLE
+	65 a.HIGHELF_USEABLE
+	66 a.DARKELF_USEABLE
+	67 a.HALFELF_USEABLE
+	68 a.DWARF_USEABLE
+	69 a.TROLL_USEABLE
+	70 a.OGRE_USEABLE
+	71 a.HALFLING_USEABLE
+	72 a.GNOME_USEABLE
+	73 a.IKSAR_USEABLE
+	74 a.VAHSHIR_USEABLE
+	75 a.FROGLOK_USEABLE
+	76 a.DRAKKIN_USEABLE
+	77 a.TEMPLATE_USEABLE
+	78 a.REQ_AGNOSTIC
+	79 a.REQ_BERTOXXULOUS
+	80 a.REQ_BRELLSERILIS
+	81 a.REQ_CAZICTHULE
+	82 a.REQ_EROLLISIMARR
+	83 a.REQ_FIZZLETHORP
+	84 a.REQ_INNORUUK
+	85 a.REQ_KARANA
+	86 a.REQ_MITHMARR
+	87 a.REQ_PREXUS
+	88 a.REQ_QUELLIOUS
+	89 a.REQ_RALLOSZEK
+	90 a.REQ_RODCETNIFE
+	91 a.REQ_SOLUSEKRO
+	92 a.REQ_TRIBUNAL
+	93 a.REQ_TUNARE
+	94 a.REQ_VEESHAN
+	95 a.MODFACTION1_NUM
+	96 a.MODFACTION1_VALUE
+	97 a.MODFACTION2_NUM
+	98 a.MODFACTION2_VALUE
+	99 a.MODFACTION3_NUM
+	100 a.MODFACTION3_VALUE
+	101 a.MODFACTION4_NUM
+	102 a.MODFACTION4_VALUE
+	103 a.GEM_SIZE
+	104 a.SOCKET_CLASS
+	105 a.SOLVENT_ITEM_ID
+	106 a.POINT_TYPE
+	107 a.POINT_THEME_BIT_MASK
+	108 a.POINT_COST
+	109 a.POINT_BUY_BACK_PERCENT
+	110 a.ADVENTURE_ESTEEM_NEEDED
+	111 a.FOOD_DURATION
+	112 a.LIGHT_TYPE
+	113 a.MAGIC
+	114 a.SKIN_TYPE
+	115 a.ARMOR_VARIANT
+	116 a.ARMOR_MAT
+	117 a.R_TINT
+	118 a.G_TINT
+	119 a.B_TINT
+	120 a.ANIMATION_OVERRIDE
+	121 a.TINT_PALETTE_INDEX
+	122 a.MERCHANT_MULTIPLIER
+	123 a.LOG
+	124 a.LOOT_LOG
+	125 a.REQ_AVATAR
+	126 a.SKILL_MOD
+	127 a.SKILL_BONUS
+	128 a.SPECIAL_SKILL_CAP
+	129 a.POOF_ON_DEATH
+	130 a.INSTRUMENT_TYPE
+	131 a.INSTRUMENT_PERCENTAGE_MOD
+	132 a.SCRIPTID
+	133 a.SCRIPT_FILE_NAME
+	134 a.TRADESKILL
+	135 a.TRIBUTE_VALUE
+	136 a.GUILD_TRIBUTE_VALUE
+	137 a.HIGH_PROFILE
+	138 a.IS_POTION_BELT_ALLOWED
+	139 a.NUM_POTION_SLOTS
+	140 a.CAN_USE_FILTER_ID
+	141 a.RIGHT_CLICK_SCRIPT_ID
+	142 a.IS_QUEST_ITEM
+	143 a.NO_ENDLESS_QUIVER
+	144 a.POWER_CHARGES
+	145 a.POWER_PURITY
+	146 a.IS_EPIC_1
+	147 a.IS_EPIC_15
+	148 a.IS_EPIC_2
+	149 b.STR_MOD
+	150 b.INT_MOD
+	151 b.WIS_MOD
+	152 b.AGI_MOD
+	153 b.DEX_MOD
+	154 b.STA_MOD
+	155 b.CHA_MOD
+	156 b.HP_MOD
+	157 b.MANA_MOD
+	158 b.AC_MOD
+	159 b.ENDURANCE_MOD
+	160 b.SAVE_MAGIC_MOD
+	161 b.SAVE_FIRE_MOD
+	162 b.SAVE_COLD_MOD
+	163 b.SAVE_DISEASE_MOD
+	164 b.SAVE_POISON_MOD
+	165 b.SAVE_CORRUPTION_MOD
+	166 c.HASTE
+	167 c.ATTACK
+	168 c.HP_REGEN
+	169 c.MANA_REGEN
+	170 c.ENDURANCE_REGEN
+	171 c.DAMAGE_SHIELD
+	172 c.COMBAT_EFFECTS
+	173 c.SHIELDING
+	174 c.SPELL_SHIELDING
+	175 c.AVOIDANCE
+	176 c.ACCURACY
+	177 c.STUN_RESIST
+	178 c.STRIKETHROUGH
+	179 c.SKILL_DAMAGE_NUM
+	180 c.SKILL_DAMAGE_MOD
+	181 c.DOT_SHIELDING
+	182 d.DELAY
+	183 d.BASE_DAMAGE
+	184 d.ITEM_RANGE
+	185 d.BANE_RACE
+	186 d.BANE_BODYTYPE
+	187 d.RACE_BANE_DAMAGE
+	188 d.BODYTYPE_BANE_DAMAGE
+	189 d.ELEMENT_CRIT
+	190 d.ELEMENT_DAMAGE
+	191 e.CONTAINER_TYPE
+	192 e.CONTAINER_CAPACITY
+	193 e.CONTAINER_ITEM_SIZE_LIMIT
+	194 e.CONTAINER_WEIGHT_RDX
+	195 f.NOTE_TYPE
+	196 f.NOTE_LANGUAGE
+	197 f.NOTE_TEXTFILE
+	198 d.BACKSTAB_DAMAGE
+	199 c.DAMAGE_SHIELD_MITIGATION
+	200 b.HEROIC_STR_MOD
+	201 b.HEROIC_INT_MOD
+	202 b.HEROIC_WIS_MOD
+	203 b.HEROIC_AGI_MOD
+	204 b.HEROIC_DEX_MOD
+	205 b.HEROIC_STA_MOD
+	206 b.HEROIC_CHA_MOD
+	207 b.HEROIC_SAVE_MAGIC_MOD
+	208 b.HEROIC_SAVE_FIRE_MOD
+	209 b.HEROIC_SAVE_COLD_MOD
+	210 b.HEROIC_SAVE_DISEASE_MOD
+	211 b.HEROIC_SAVE_POISON_MOD
+	212 b.HEROIC_SAVE_CORRUPTION_MOD
+	213 c.HEAL_AMOUNT
+	214 c.SPELL_DAMAGE
+	215 c.CLAIRVOYANCE
+	216 a.SUB_CLASS
+	217 a.LOGIN_REGISTRATION_REQUIRED
+	218 a.LAUNCH_SCRIPT_ID
+	219 a.HEIRLOOM
+	220 g.EQG_ID
+	221 g.PLACEMENT_FLAGS
+	222 g.IGNORE_COLLISIONS
+	223 g.PLACEMENT_TYPE
+	224 g.REAL_ESTATE_DEF_ID
+	225 g.PLACEABLE_SCALE_RANGE_MIN
+	226 g.PLACEABLE_SCALE_RANGE_MAX
+	227 g.REAL_ESTATE_UPKEEP_ID
+	228 g.MAX_PER_REAL_ESTATE
+	229 g.NPC_FILENAME
+	230 g.TROPHY_BENEFIT_ID
+	231 g.DISABLE_PLACEMENT_ROTATION
+	232 g.DISABLE_FREE_PLACEMENT
+	233 g.NPC_RESPAWN_INTERVAL
+	234 g.PLACEABLE_SCALE_DEFAULT
+	235 g.PLACEABLE_ORIENTATION_HEADING
+	236 g.PLACEABLE_ORIENTATION_PITCH
+	237 g.PLACEABLE_ORIENTATION_ROLL
+	238 a.NO_BANK
+	239 CONCAT('IT',a.SECONDARY_ACTOR_TAG)
+	240 g.IS_INTERACTIVE_OBJECT
+	241 a.SKILL_MOD_OFFSET
+	242 a.SOCKET_SUB_CLASSES
+	243 a.NEW_ARMOR_ID
+	244 a.ITEM_RANK
+	245 a.SOCKET_SKIN_TYPE_MASK
+	246 a.IS_COLLECTIBLE
+	247 a.NO_DESTROY
+	248 a.NO_NPC
+	249 a.NO_ZONE
+	250 a.CREATOR_ID
+	251 a.NO_GROUND
+	252 a.NO_LOOT
 */
 enum ETagCodes
 {
@@ -1105,10 +1050,11 @@ enum ETagCodes
 	ETAG_SPAM,
 	ETAG_ACHIEVEMENT,
 	ETAG_DIALOG_RESPONSE,
-    ETAG_COMMAND,
-    ETAG_SPELL,		
+	ETAG_COMMAND,
+	ETAG_SPELL,
 	ETAG_COUNT
 };
+
 const int TagSizes[ETAG_COUNT] = {
 #if defined(ROF2EMU) || defined(UFEMU)
 	58,
@@ -1122,17 +1068,18 @@ const int TagSizes[ETAG_COUNT] = {
 	0,
 	4,
 };
-#define TAG_CHAR ((char)0x12)
-int GetItemTag(const char *Str, char**Ptr)
+constexpr char TAG_CHAR = 0x12;
+
+int GetItemTag(const char* Str, char** Ptr)
 {
 	int ret = -1;
 	CXStr str = Str;
 	for (int i = 0; i < str.GetLength(); i++)
 	{
 		wchar_t ch = str.GetUnicode(i);
-		if(ch == TAG_CHAR)
+		if (ch == TAG_CHAR)
 		{
-			*Ptr = (char*)&str.Ptr->Text[i];
+			*Ptr = (char*)&str.data()[i];
 			int StartIndex = i + 2;
 			int EndIndex = -1;
 			while (StartIndex < str.GetLength())
@@ -1154,205 +1101,107 @@ int GetItemTag(const char *Str, char**Ptr)
 			int tagCode2 = str.GetUnicode(i + 2) - ((wchar_t)'0');
 			switch (tagCode)
 			{
-				case ETAG_PLAYER:
+			case ETAG_PLAYER:
+			{
+				ret = ETAG_PLAYER;
+				CXStr pName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
+				if (pName.GetChar(0) == ':')
 				{
-					ret = ETAG_PLAYER;
-					CXStr pName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
-					if ( pName.GetChar(0) == ':' )
-					{
-						pName.Delete(0, 1);
-					}
-					str.Delete(i, (EndIndex - i) + 1);
-					str.Insert(i, pName);
-					i += pName.GetLength() - 1;
-					break;
+					pName.Delete(0, 1);
 				}
-				case ETAG_SPAM:
-				{
-					ret = ETAG_SPAM;
-					str.Delete(i, (EndIndex - i) + 1);
-					str.Insert(i, "(SPAM)");
-					i += 5;
-					break;
-				}
-				case ETAG_ACHIEVEMENT:
-				{
-					ret = ETAG_ACHIEVEMENT;
-					int iTagSize = i;
-					str.FindNext('\'', iTagSize);
-					iTagSize = iTagSize + 2 - i;
-					CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
-					str.Delete(i, (EndIndex - i) + 1);
-					str.Insert(i, itemName);
-					i += itemName.GetLength() - 1;
-				}
+				str.Delete(i, (EndIndex - i) + 1);
+				str.Insert(i, pName);
+				i += pName.GetLength() - 1;
 				break;
-				case ETAG_DIALOG_RESPONSE:
-				{
-					ret = ETAG_DIALOG_RESPONSE;
-					str.Delete(i, 2);
-					str.Delete(EndIndex - 2, 1);
-					i = EndIndex - 3;
-				}
+			}
+			case ETAG_SPAM:
+			{
+				ret = ETAG_SPAM;
+				str.Delete(i, (EndIndex - i) + 1);
+				str.Insert(i, "(SPAM)");
+				i += 5;
 				break;
-				case ETAG_COMMAND:
+			}
+			case ETAG_ACHIEVEMENT:
+			{
+				ret = ETAG_ACHIEVEMENT;
+				int iTagSize = i;
+				str.FindNext('\'', iTagSize);
+				iTagSize = iTagSize + 2 - i;
+				CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
+				str.Delete(i, (EndIndex - i) + 1);
+				str.Insert(i, itemName);
+				i += itemName.GetLength() - 1;
+			}
+			break;
+			case ETAG_DIALOG_RESPONSE:
+			{
+				ret = ETAG_DIALOG_RESPONSE;
+				str.Delete(i, 2);
+				str.Delete(EndIndex - 2, 1);
+				i = EndIndex - 3;
+			}
+			break;
+			case ETAG_COMMAND:
+			{
+				ret = ETAG_COMMAND;
+				str.Delete(i, 2);
+				str.Delete(EndIndex - 2, 1);
+				i = EndIndex - 3;
+			}
+			break;
+			case ETAG_SPELL:
+			{
+				if (tagCode2 != 3)
 				{
-					ret = ETAG_COMMAND;
-					str.Delete(i, 2);
-					str.Delete(EndIndex - 2, 1);
-					i = EndIndex - 3;
+					Sleep(0);
 				}
-				break;
-				case ETAG_SPELL:
-				{
-					if (tagCode2 != 3)
-					{
-						Sleep(0);
-					}
-					ret = ETAG_SPELL;
-					CXStr copy = str;
-					int iTagSize = i;
-					str.FindNext('\'', iTagSize);
-					iTagSize = iTagSize + 2 - i;
-					CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
-					str.Delete(i, (EndIndex - i) + 1);
-					str.Insert( i, itemName );
-					i += itemName.GetLength() - 1;
-				}
-				break;
-				case ETAG_ITEM:
-				{
-					ret = ETAG_ITEM;
-					char *NewPtr = LinkExtract(*Ptr);
-					CXStr itemName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
-					str.Delete(i, (EndIndex - i) + 1);
-					str.Insert(i, itemName);
-					i += itemName.GetLength() - 1;
-				}
-				break;
+				ret = ETAG_SPELL;
+				CXStr copy = str;
+				int iTagSize = i;
+				str.FindNext('\'', iTagSize);
+				iTagSize = iTagSize + 2 - i;
+				CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
+				str.Delete(i, (EndIndex - i) + 1);
+				str.Insert(i, itemName);
+				i += itemName.GetLength() - 1;
+			}
+			break;
+			case ETAG_ITEM:
+			{
+				ret = ETAG_ITEM;
+				char* NewPtr = LinkExtract(*Ptr);
+				CXStr itemName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
+				str.Delete(i, (EndIndex - i) + 1);
+				str.Insert(i, itemName);
+				i += itemName.GetLength() - 1;
+			}
+			break;
 			}
 		}
 	}
 	return ret;
 }
-// This is called every time EQ shows a line of chat with CEverQuest::dsp_chat, 
-// but after MQ filters and chat events are taken care of. 
-PLUGIN_API DWORD OnIncomingChat(PCHAR Line, DWORD Color)
+// This is called every time EQ shows a line of chat with CEverQuest::dsp_chat,
+// but after MQ filters and chat events are taken care of.
+PLUGIN_API DWORD OnIncomingChat(char* Line, DWORD Color)
 {
 	//"Soandso hit a venomshell pest for 106012 points of magic damage by \x1263^56723^'Claw of Ellarr\x12."
-	if (bScanChat) {
+	if (bScanChat)
+	{
 		if (strchr(Line, TAG_CHAR))
 		{
-			char* cPtr = 0;
+			char* cPtr = nullptr;
 			int tag = GetItemTag(Line, &cPtr);
 		}
 	}
 	return 0;
 }
 
-//
-// DB Converter now part of plugin
-//
-#if 0
-typedef unsigned int uint32_t;
-// 
-// uint32_t calc_hash (const char *string) 
-// 
-static uint32_t calc_hash(const char *string)
-{
-   register int hash = 0;
 
-   while (*string != '\0') {
-      register int c = toupper(*string);
-      hash *= 0x1F; 
-      hash += (int) c; 
-
-      string++;
-   }
-
-   return hash; 
-} 
-
-template <unsigned int _Size>static void MakeLink (PEQITEM Item, CHAR(&cLink)[_Size])
-{
-	char hashstr[512] = { 0 };
-
-   // charm
-   if (Item->itemclass == 0 && Item->charmfileid != 0) {
-      sprintf_s(hashstr, "%d%s%d %d %d %d %d %d %d %d",
-         Item->id, Item->name,
-         Item->light, Item->icon, Item->price, Item->size,
-         Item->itemclass, Item->itemtype, Item->favor,
-         Item->guildfavor);
-
-      //WriteChatf("Charm: %s", Item->name); 
-      //WriteChatf("Hash: %s", hashstr); 
-   // books
-   }
-   else if (Item->itemclass == 2) {
-      sprintf_s(hashstr, "%d%s%d%d%09X",
-         Item->id, Item->name,
-         Item->weight, Item->booktype, Item->price);
-
-      //WriteChatf("Book: %s", Item->name); 
-      //WriteChatf("Hash: %s", hashstr); 
-   // bags
-   }
-   else if (Item->itemclass == 1) {
-      sprintf_s(hashstr, "%d%s%x%d%09X%d",
-         Item->id, Item->name,
-         Item->bagslots, Item->bagwr, Item->price, Item->weight);
-
-      //WriteChatf("Bag: %s", Item->name); 
-      //WriteChatf("Hash: %s", hashstr); 
-   // normal items
-   } 
-   else {
-      sprintf_s(hashstr, "%d%s%d %d %d %d %d %d %d %d %d %d %d %d %d",
-         Item->id, Item->name,
-         Item->mana, Item->hp, Item->favor, Item->light,
-         Item->icon, Item->price, Item->weight, Item->reqlevel,
-         Item->size, Item->itemclass, Item->itemtype, Item->ac,
-         Item->guildfavor);
-
-      //WriteChatf("Item: %s", Item->name); 
-      //WriteChatf("Hash: %s", hashstr); 
-   } 
-
-   uint32_t hash = calc_hash(hashstr);
-
-   if (Item->loregroup > 1000)
-   {
-      // Evolving 
-      sprintf_s(cLink, "\x12%d%05X%05X%05X%05X%05X%05X%06X%1d%04X%1X%05X%08X%s\x12",
-         0,
-         Item->id,
-         0, 0, 0, 0, 0, // Augs 
-		 0, // New field in CoF
-         1, Item->loregroup, (Item->id % 10) + 1, // Evolving items (0=no 1=evolving, lore group, level) 
-		 0, // Item->icon,
-         hash, // Item hash 
-         Item->name);
-   }
-   else
-   {
-      // Non-evolving 
-      sprintf_s(cLink, "\x12%d%05X%05X%05X%05X%05X%05X%06X%1d%04X%1X%05X%08X%s\x12",
-         0,
-         Item->id,
-         0, 0, 0, 0, 0, // Augs 
-		 0, // New field in CoF
-         0, 0, 0, // Evolving items (0=no 1=evolving, lore group, level) 
-		 0, // Item->icon,
-         hash, // Item hash 
-         Item->name);
-   } 
-}
-#endif
-
-#pragma warning( disable:4244 ) // warning C4244: 'conversion' conversion from 'type1' to 'type2', possible loss of data
 // SODEQ converter
-typedef struct {
+struct SODEQITEM
+{
 	int  itemclass;
 	char name[ITEM_NAME_LEN];
 	char lore[LORE_NAME_LEN];
@@ -1644,19 +1493,16 @@ typedef struct {
 	short convertable;
 	long convertid;
 	char convertname[ITEM_NAME_LEN];
-	
+
 	short updated;
 	short created;
 	char submitter[255];
 	short verified;
 	char verifiedby[255];
 	char collectversion[0x20];
-} SODEQITEM, *PSODEQITEM;
+};
 
-// 
-// void SODEQSetField (PSODEQITEM Item, int iField, const char * cField) 
-// 
-void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
+void SODEQSetField(SODEQITEM* Item, int iField, const char* cField)
 {
 	int lValue = atol(cField);
 	double dValue = atof(cField);
@@ -1796,8 +1642,8 @@ void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
 	case 130: Item->unk010 = lValue; break;
 	case 131: Item->nopet = lValue; break;
 	case 132: Item->unk011 = lValue; break;
-	//case 133: Item->potionbelt = lValue; break;
-	//case 134: Item->potionbeltslots = lValue; break;
+		//case 133: Item->potionbelt = lValue; break;
+		//case 134: Item->potionbeltslots = lValue; break;
 	case 133: Item->stacksize = lValue; break;
 	case 134: Item->notransfer = bValue; break;
 	case 135: Item->expendablearrow = lValue; break;
@@ -1908,8 +1754,8 @@ void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
 	case 240: Item->unk038 = lValue; break;
 	case 241: Item->unk039 = lValue; break;
 	case 242: Item->unk040 = lValue; break;
-	case 243: Item->unk041 = dValue * 100; break;
-	case 244: Item->unk042 = dValue * 100; break;
+	case 243: Item->unk041 = static_cast<long>(dValue * 100); break;
+	case 244: Item->unk042 = static_cast<long>(dValue * 100); break;
 	case 245: Item->unk043 = lValue; break;
 	case 246: Item->unk044 = lValue; break;
 	case 247: strcpy_s(Item->placeablenpcname, cField); break;
@@ -1917,7 +1763,7 @@ void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
 	case 249: Item->unk047 = lValue; break;
 	case 250: Item->unk048 = lValue; break;
 	case 251: Item->unk049 = lValue; break;
-	case 252: Item->unk050 = dValue * 100; break;
+	case 252: Item->unk050 = static_cast<long>(dValue * 100); break;
 	case 253: Item->unk051 = lValue; break;
 	case 254: Item->unk052 = lValue; break;
 	case 255: Item->unk053 = lValue; break;
@@ -1964,21 +1810,20 @@ void SODEQSetField(PSODEQITEM Item, int iField, const char * cField)
 	}
 }
 
-// 
-// void SODEQReadItem (char * cLine) 
-// 
-static void SODEQReadItem(PSODEQITEM Item, char * cLine)
+static void SODEQReadItem(SODEQITEM* Item, char* cLine)
 {
-	char * cPtr = cLine;
+	char* cPtr = cLine;
 	int iField = 0;
 
-	while (*cPtr) {
+	while (*cPtr)
+	{
 		char cField[256];
-		char * cDest = cField;
+		char* cDest = cField;
 		bool bEscape = false;
 
 		//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
-		while ((*cPtr != '|' || bEscape) && *cPtr != '\0') {
+		while ((*cPtr != '|' || bEscape) && *cPtr != '\0')
+		{
 			if (bEscape) bEscape = !bEscape; else bEscape = *cPtr == '\\';
 			if (bEscape) { cPtr++; /*DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);*/ continue; }
 			*(cDest++) = *(cPtr++);
@@ -1987,507 +1832,248 @@ static void SODEQReadItem(PSODEQITEM Item, char * cLine)
 		*cDest = '\0';
 		cPtr++;
 
-		//WriteChatf("cField: %s", cField); 
+		//WriteChatf("cField: %s", cField);
 		SODEQSetField(Item, iField++, cField);
 	}
 }
-PCONTENTS FindFirstItem()
+
+ItemClient* FindFirstItem()
 {
-	PCHARINFO2 pChar2 = GetCharInfo2();
+	if (!pCharData) return nullptr;
 
-	//check cursor
-	if (pChar2 && pChar2->pInventoryArray && pChar2->pInventoryArray->Inventory.Cursor) {
-		return pChar2->pInventoryArray->Inventory.Cursor;
-	}
+	// check cursor
+	if (const ItemPtr& pItem = pCharData->GetInventorySlot(InvSlot_Cursor))
+		return pItem.get();
 
-	//check toplevel slots
-	if (pChar2 && pChar2->pInventoryArray && pChar2->pInventoryArray->InventoryArray) {
-		for (unsigned long nSlot = 0; nSlot < NUM_INV_SLOTS; nSlot++) {
-			if (PCONTENTS pItem = pChar2->pInventoryArray->InventoryArray[nSlot]) {
-				return pItem;
-			}
-		}
-	}
-
-	//check the bags
-	if (pChar2 && pChar2->pInventoryArray) {
-		for (unsigned long nPack = 0; nPack < 10; nPack++) {
-			if (PCONTENTS pPack = pChar2->pInventoryArray->Inventory.Pack[nPack]) {
-				return pPack;
-			}
-		}
-	}
-
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	PCHARINFO pChar = GetCharInfo();
-	//still not found? fine... check mount keyring
-#ifdef NEWCHARINFO
-	if (pChar) {
-		for (unsigned long nSlot = 0; nSlot < pChar->MountKeyRingItems.Items.Size; nSlot++) {
-			if (PCONTENTS pItem = pChar->MountKeyRingItems.Items[nSlot].pObject) {
-#else
-	if (pChar && pChar->pMountsArray && pChar->pMountsArray->Mounts) {
-		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
-			if (PCONTENTS pItem = pChar->pMountsArray->Mounts[nSlot]) {
-#endif
-				return pItem;
-			}
-		}
-	}
-
-	//still not found? fine... check illusions keyring
-#ifdef NEWCHARINFO
-	if (pChar) {
-		for (unsigned long nSlot = 0; nSlot < pChar->IllusionKeyRingItems.Items.Size; nSlot++) {
-			if (PCONTENTS pItem = pChar->IllusionKeyRingItems.Items[nSlot].pObject) {
-#else
-	if (pChar && pChar->pIllusionsArray && pChar->pIllusionsArray->Illusions) {
-		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
-			if (PCONTENTS pItem = pChar->pIllusionsArray->Illusions[nSlot]) {
-#endif
-				return pItem;
-			}
-		}
-	}
-
-	//still not found? fine... check familiars keyring
-#ifdef NEWCHARINFO
-	if (pChar) {
-		for (unsigned long nSlot = 0; nSlot < pChar->FamiliarKeyRingItems.Items.Size; nSlot++) {
-			if (PCONTENTS pItem = pChar->FamiliarKeyRingItems.Items[nSlot].pObject) {
-#else
-	if (pChar && pChar->pFamiliarArray && pChar->pFamiliarArray->Familiars) {
-		for (unsigned long nSlot = 0; nSlot < MAX_KEYRINGITEMS; nSlot++) {
-			if (PCONTENTS pItem = pChar->pFamiliarArray->Familiars[nSlot]) {
-#endif
-				return pItem;
-			}
-		}
-	}
-#endif
-	return 0;
-}
-template <unsigned int _Size> static void SODEQMakeLink(PSODEQITEM Item, CHAR(&cLink)[_Size])
-{
-	PCHARINFO2 pCharInfo = NULL;
-	PITEMINFO pItemInfo = NULL;
-	PCONTENTS pCursor = NULL;
-	PCONTENTS pCursorOrg = NULL;
-
-	if (NULL == (pCharInfo = GetCharInfo2())) return;
-	if (NULL == (pCursorOrg = FindFirstItem()))
+	ItemContainerInstance containers[] =
 	{
-		WriteChatf("/link /import only works if you have at least 1 item in your inventory or a keyring");
-		return;
+		eItemContainerPossessions,
+		eItemContainerMountKeyRingItems,
+		eItemContainerIllusionKeyRingItems,
+		eItemContainerFamiliarKeyRingItems,
+		eItemContainerHeroForgeKeyRingItems,
+	};
+	for (ItemContainerInstance container : containers)
+	{
+		if (ItemContainer* pContainer = GetItemContainerByType(container))
+		{
+			for (const ItemPtr& pItem : *pContainer)
+				return pItem.get();
+		}
 	}
-	
-	pCursor = (PCONTENTS)LocalAlloc(LPTR, sizeof(CONTENTS));
-	pCursor->vtable = pCursorOrg->vtable;
-	pCursor->RefCount = pCursorOrg->RefCount;
-	pCursor->punknown = pCursorOrg->punknown;
-	pCursor->Item1 = 0;
-	pCursor->Contents.bDynamic = pCursorOrg->Contents.bDynamic;
-	pCursor->Contents = pCursorOrg->Contents;
 
-	pCursor->GlobalIndex = pCursorOrg->GlobalIndex;
-	pCursor->RealEstateArray = pCursorOrg->RealEstateArray;
+	return nullptr;
+}
 
-	pItemInfo = (PITEMINFO)LocalAlloc(LPTR, sizeof(ITEMINFO));
-	//pItemInfo = GetItemFromContents(pCursor);
-
-	strcpy_s(pItemInfo->Name, Item->name);
-	strcpy_s(pItemInfo->LoreName, Item->lore);
-	//strcpy_s(pItemInfo->AdvancedLoreName, );
-	memset(&pItemInfo->AdvancedLoreName, 0, sizeof(pItemInfo->AdvancedLoreName));
+static std::string SODEQMakeLink(const SODEQITEM& Item)
+{
+	ItemDefinitionPtr pItemDef = SoeUtil::MakeShared<ItemDefinition>();
+	strcpy_s(pItemDef->Name, Item.name);
+	strcpy_s(pItemDef->LoreName, Item.lore);
+	pItemDef->ItemNumber = Item.id;
+	pItemDef->EquipSlots = Item.slots;
+	pItemDef->Cost = Item.price;
+	pItemDef->IconNumber = Item.icon;
+	pItemDef->Weight = Item.weight;
+	pItemDef->NoRent = Item.norent;
+	pItemDef->NoDrop = Item.notransfer;
+	pItemDef->Attuneable = Item.attuneable;
+	pItemDef->Heirloom = Item.heirloom;
+	pItemDef->Collectible = Item.collectible;
+	pItemDef->NoDestroy = Item.nodestroy;
+	pItemDef->Size = static_cast<uint8_t>(Item.size);
+	pItemDef->Type = Item.itemclass;
+	pItemDef->TradeSkills = Item.tradeskills;
+	pItemDef->Lore = (Item.loregroup == 0 ? 0 : 1);
+	pItemDef->Artifact = Item.artifactflag;
+	pItemDef->Summoned = Item.summoned;
+	pItemDef->SvCold = static_cast<char>(Item.cr);
+	pItemDef->SvFire = static_cast<char>(Item.fr);
+	pItemDef->SvMagic = static_cast<char>(Item.mr);
+	pItemDef->SvDisease = static_cast<char>(Item.dr);
+	pItemDef->SvPoison = static_cast<char>(Item.pr);
+	pItemDef->SvCorruption = static_cast<char>(Item.svcorruption);
+	pItemDef->STR = static_cast<char>(Item.astr);
+	pItemDef->STA = static_cast<char>(Item.asta);
+	pItemDef->AGI = static_cast<char>(Item.aagi);
+	pItemDef->DEX = static_cast<char>(Item.adex);
+	pItemDef->CHA = static_cast<char>(Item.acha);
+	pItemDef->INT = static_cast<char>(Item.aint);
+	pItemDef->WIS = static_cast<char>(Item.awis);
+	pItemDef->HP = Item.hp;
+	pItemDef->Mana = Item.mana;
+	pItemDef->AC = Item.ac;
+	pItemDef->RequiredLevel = Item.reqlevel;
+	pItemDef->RecommendedLevel = Item.reclevel;
+	pItemDef->RecommendedSkill = Item.recskill;
+	pItemDef->SkillModType = Item.skillmodtype;
+	pItemDef->SkillModValue = Item.skillmodvalue;
+	pItemDef->SkillModMax = Item.skillmodmax;
+	pItemDef->SkillModBonus = Item.skillmodextra;
+	pItemDef->BaneDMGRace = Item.banedmgrace;
+	pItemDef->BaneDMGBodyType = Item.banedmgbody;
+	pItemDef->BaneDMGBodyTypeValue = Item.banedmgamt;
+	pItemDef->BaneDMGRaceValue = Item.banedmgraceamt;
+	pItemDef->InstrumentType = Item.bardtype;
+	pItemDef->InstrumentMod = Item.bardvalue;
+	pItemDef->Classes = Item.classes;
+	pItemDef->Races = Item.races;
+	pItemDef->Diety = Item.deity;
+	pItemDef->Magic = Item.magic;
+	pItemDef->Light = static_cast<uint8_t>(Item.light);
+	pItemDef->Delay = static_cast<uint8_t>(Item.delay);
+	pItemDef->ElementalFlag = static_cast<uint8_t>(Item.elemdmgtype);
+	pItemDef->ElementalDamage = static_cast<uint8_t>(Item.elemdmgamt);
+	pItemDef->Range = static_cast<uint8_t>(Item.range);
+	pItemDef->Damage = Item.damage;
+	pItemDef->BackstabDamage = Item.backstabdmg;
+	pItemDef->HeroicSTR = Item.heroic_str;
+	pItemDef->HeroicINT = Item.heroic_int;
+	pItemDef->HeroicWIS = Item.heroic_wis;
+	pItemDef->HeroicAGI = Item.heroic_agi;
+	pItemDef->HeroicDEX = Item.heroic_dex;
+	pItemDef->HeroicSTA = Item.heroic_sta;
+	pItemDef->HeroicCHA = Item.heroic_cha;
+	pItemDef->HealAmount = Item.healamt;
+	pItemDef->SpellDamage = Item.spelldmg;
+	pItemDef->Prestige = Item.prestige;
+	pItemDef->ItemClass = static_cast<uint8_t>(Item.itemtype);
+	pItemDef->ArmorProps.Material = Item.material;
+	pItemDef->AugData.Sockets[0].Type = Item.augslot1type;
+	pItemDef->AugData.Sockets[0].bVisible = Item.augslot1unk2;
+	pItemDef->AugData.Sockets[1].Type = Item.augslot2type;
+	pItemDef->AugData.Sockets[1].bVisible = Item.augslot2unk2;
+	pItemDef->AugData.Sockets[2].Type = Item.augslot3type;
+	pItemDef->AugData.Sockets[2].bVisible = Item.augslot3unk2;
+	pItemDef->AugData.Sockets[3].Type = Item.augslot4type;
+	pItemDef->AugData.Sockets[3].bVisible = Item.augslot4unk2;
+	pItemDef->AugData.Sockets[4].Type = Item.augslot5type;
+	pItemDef->AugData.Sockets[4].bVisible = Item.augslot5unk2;
+	pItemDef->AugData.Sockets[5].Type = Item.augslot6type;
+	pItemDef->AugData.Sockets[5].bVisible = Item.augslot6unk2;
+	pItemDef->AugType = Item.augtype;
+	pItemDef->AugRestrictions = Item.augrestrict;
+	pItemDef->SolventItemID = Item.augdistiller;
+	pItemDef->LDTheme = Item.ldontheme;
+	pItemDef->LDCost = Item.ldonprice;
+	strcpy_s(pItemDef->CharmFile, Item.charmfile);
+	pItemDef->DmgBonusSkill = Item.extradmgskill;
+	pItemDef->DmgBonusValue = Item.extradmgamt;
+	pItemDef->CharmFileID = Item.charmfileid;
+	pItemDef->FoodDuration = Item.foodduration;
+	pItemDef->Combine = static_cast<uint8_t>(Item.bagtype);
+	pItemDef->Slots = static_cast<uint8_t>(Item.bagslots);
+	pItemDef->SizeCapacity = static_cast<uint8_t>(Item.bagsize);
+	pItemDef->WeightReduction = static_cast<uint8_t>(Item.bagwr);
+	pItemDef->BookType = static_cast<uint8_t>(Item.booktype);
+	pItemDef->BookLang = static_cast<int8_t>(Item.booklang);
+	strcpy_s(pItemDef->BookFile, Item.filename);
+	pItemDef->Favor = Item.favor;
+	pItemDef->GuildFavor = Item.guildfavor;
+	pItemDef->bIsFVNoDrop = Item.fvnodrop;
+	pItemDef->Endurance = Item.endur;
+	pItemDef->Attack = Item.attack;
+	pItemDef->HPRegen = Item.regen;
+	pItemDef->ManaRegen = Item.manaregen;
+	pItemDef->EnduranceRegen = Item.enduranceregen;
+	pItemDef->Haste = Item.haste;
+	pItemDef->bNoPetGive = Item.nopet;
+	pItemDef->StackSize = Item.stacksize;
+	pItemDef->MaxPower = Item.powersourcecapacity;
+	pItemDef->Purity = Item.purity;
+	pItemDef->QuestItem = Item.questitemflag;
+	pItemDef->Expendable = Item.expendablearrow;
+	pItemDef->Clairvoyance = Item.clairvoyance;
+	pItemDef->Placeable = Item.placeable;
 #if defined(ROF2EMU) || defined(UFEMU)
-	strcpy_s(pItemInfo->IDFile, Item->idfile);
+	pItemDef->FactionModType[0] = Item.factionmod1;
+	pItemDef->FactionModType[1] = Item.factionmod2;
+	pItemDef->FactionModType[2] = Item.factionmod3;
+	pItemDef->FactionModType[3] = Item.factionmod4;
+	pItemDef->FactionModValue[0] = Item.factionamt1;
+	pItemDef->FactionModValue[1] = Item.factionamt2;
+	pItemDef->FactionModValue[2] = Item.factionamt3;
+	pItemDef->FactionModValue[3] = Item.factionamt4;
+	strcpy_s(pItemDef->IDFile, Item.idfile);
 #else
-	pCursor->DontKnow = pCursorOrg->DontKnow;
-	pCursor->Luck = 0;
-	pItemInfo->IDFile = 0;
+	pItemDef->bNoNPC = Item.nonpc;
+	pItemDef->LoreEquipped = 1;
 #endif
-	//strcpy_s(pItemInfo->IDFile2, );
-	memset(&pItemInfo->IDFile2, 0, sizeof(pItemInfo->IDFile2));
-	pItemInfo->ItemNumber = Item->id;
-	pItemInfo->EquipSlots = Item->slots;
-	pItemInfo->Cost = Item->price;
-	pItemInfo->IconNumber = Item->icon;
-	pItemInfo->eGMRequirement = 0;
-	pItemInfo->bPoofOnDeath = 0;
-	pItemInfo->Weight = Item->weight;
-	pItemInfo->NoRent = Item->norent;
-	pItemInfo->NoDrop = Item->notransfer;
-	pItemInfo->Attuneable = Item->attuneable;
-	pItemInfo->Heirloom = Item->heirloom;
-	pItemInfo->Collectible = Item->collectible;
-	pItemInfo->NoDestroy = Item->nodestroy;
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	pItemInfo->bNoNPC = Item->nonpc;
-#endif
-	pItemInfo->NoZone = 0;
-	pItemInfo->MakerID = 0;
-	pItemInfo->NoGround = 0;
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	pItemInfo->bNoLoot = 0;
-#endif
-	pItemInfo->MarketPlace = 0;
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	pItemInfo->bFreeSlot = 0;
-	pItemInfo->bAutoUse = 0;
-	pItemInfo->Unknown0x00e4 = 0;
-	pItemInfo->LoreEquipped = 1;
-#endif
-	pItemInfo->Size = Item->size;
-	pItemInfo->Type = Item->itemclass;
-	pItemInfo->TradeSkills = Item->tradeskills;
-	pItemInfo->Lore = (Item->loregroup == 0 ? 0 : 1);
-	pItemInfo->Artifact = Item->artifactflag;
-	pItemInfo->Summoned = Item->summoned;
-	pItemInfo->SvCold = Item->cr;
-	pItemInfo->SvFire = Item->fr;
-	pItemInfo->SvMagic = Item->mr;
-	pItemInfo->SvDisease = Item->dr;
-	pItemInfo->SvPoison = Item->pr;
-	pItemInfo->SvCorruption = Item->svcorruption;
-	pItemInfo->STR = Item->astr;
-	pItemInfo->STA = Item->asta;
-	pItemInfo->AGI = Item->aagi;
-	pItemInfo->DEX = Item->adex;
-	pItemInfo->CHA = Item->acha;
-	pItemInfo->INT = Item->aint;
-	pItemInfo->WIS = Item->awis;
-	//pItemInfo->HitPoints = 0;
-	pItemInfo->HP = Item->hp;
-	pItemInfo->Mana = Item->mana;
-	pItemInfo->AC = Item->ac;
-	pItemInfo->RequiredLevel = Item->reqlevel;
-	pItemInfo->RecommendedLevel = Item->reclevel;
-	pItemInfo->RecommendedSkill = Item->recskill;
-	pItemInfo->SkillModType = Item->skillmodtype;
-	pItemInfo->SkillModValue = Item->skillmodvalue;
-	pItemInfo->SkillModMax = Item->skillmodmax;
-	pItemInfo->SkillModBonus = Item->skillmodextra;
-	pItemInfo->BaneDMGRace = Item->banedmgrace;
-	pItemInfo->BaneDMGBodyType = Item->banedmgbody;
-	pItemInfo->BaneDMGBodyTypeValue = Item->banedmgamt;
-	pItemInfo->BaneDMGRaceValue = Item->banedmgraceamt;
-	pItemInfo->InstrumentType = Item->bardtype;
-	pItemInfo->InstrumentMod = Item->bardvalue;
-	pItemInfo->Classes = Item->classes;
-	pItemInfo->Races = Item->races;
-	pItemInfo->Diety = Item->deity;
-	pItemInfo->MaterialTintIndex = 0;
-	pItemInfo->Magic = Item->magic;
-	pItemInfo->Light = Item->light;
-	pItemInfo->Delay = Item->delay;
-	pItemInfo->ElementalFlag = Item->elemdmgtype;
-	pItemInfo->ElementalDamage = Item->elemdmgamt;
-	pItemInfo->Range = Item->range;
-	pItemInfo->Damage = Item->damage;
-	pItemInfo->BackstabDamage = Item->backstabdmg;
-	pItemInfo->HeroicSTR = Item->heroic_str;
-	pItemInfo->HeroicINT = Item->heroic_int;
-	pItemInfo->HeroicWIS = Item->heroic_wis;
-	pItemInfo->HeroicAGI = Item->heroic_agi;
-	pItemInfo->HeroicDEX = Item->heroic_dex;
-	pItemInfo->HeroicSTA = Item->heroic_sta;
-	pItemInfo->HeroicCHA = Item->heroic_cha;
-#if defined(ROF2EMU) || defined(UFEMU)
-	pItemInfo->HeroicSvMagic = 0;
-	pItemInfo->HeroicSvFire = 0;
-	pItemInfo->HeroicSvCold = 0;
-	pItemInfo->HeroicSvDisease = 0;
-	pItemInfo->HeroicSvPoison = 0;
-	pItemInfo->HeroicSvCorruption = 0;
-#endif
-	pItemInfo->HealAmount = Item->healamt;
-	pItemInfo->SpellDamage = Item->spelldmg;
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	pItemInfo->MinLuck = 0;
-	pItemInfo->MaxLuck = 0;
-#endif
-	pItemInfo->Prestige = Item->prestige;
-	pItemInfo->ItemType = Item->itemtype;
-	pItemInfo->ArmorProps.Type = 0;
-	pItemInfo->ArmorProps.Variation = 0;
-	pItemInfo->ArmorProps.Material = Item->material;
-	pItemInfo->ArmorProps.NewArmorID = 0;
-	pItemInfo->ArmorProps.NewArmorType = 0;
-	pItemInfo->AugData.Sockets[0].Type = Item->augslot1type;
-	pItemInfo->AugData.Sockets[0].bVisible = Item->augslot1unk2;
-	pItemInfo->AugData.Sockets[0].bInfusible = 0;
-	pItemInfo->AugData.Sockets[1].Type = Item->augslot2type;
-	pItemInfo->AugData.Sockets[1].bVisible = Item->augslot2unk2;
-	pItemInfo->AugData.Sockets[1].bInfusible = 0;
-	pItemInfo->AugData.Sockets[2].Type = Item->augslot3type;
-	pItemInfo->AugData.Sockets[2].bVisible = Item->augslot3unk2;
-	pItemInfo->AugData.Sockets[2].bInfusible = 0;
-	pItemInfo->AugData.Sockets[3].Type = Item->augslot4type;
-	pItemInfo->AugData.Sockets[3].bVisible = Item->augslot4unk2;
-	pItemInfo->AugData.Sockets[3].bInfusible = 0;
-	pItemInfo->AugData.Sockets[4].Type = Item->augslot5type;
-	pItemInfo->AugData.Sockets[4].bVisible = Item->augslot5unk2;
-	pItemInfo->AugData.Sockets[4].bInfusible = 0;
-	pItemInfo->AugData.Sockets[5].Type = Item->augslot6type;
-	pItemInfo->AugData.Sockets[5].bVisible = Item->augslot6unk2;
-	pItemInfo->AugData.Sockets[5].bInfusible = 0;
-	pItemInfo->AugType = Item->augtype;
-	pItemInfo->AugSkinTypeMask = 0;
-	pItemInfo->AugRestrictions = Item->augrestrict;
-	pItemInfo->SolventItemID = Item->augdistiller;
-	pItemInfo->LDTheme = Item->ldontheme;
-	pItemInfo->LDCost = Item->ldonprice;
-	pItemInfo->LDType = 0;
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	memset(&pItemInfo->Unknown0x01f8, 0, sizeof(pItemInfo->Unknown0x01f8));
-	memset(&pItemInfo->Unknown0x01fc, 0, sizeof(pItemInfo->Unknown0x01fc));
-#else
-	memset(&pItemInfo->Unknown0x0238, 0, sizeof(pItemInfo->Unknown0x0238));
-	memset(&pItemInfo->Unknown0x023c, 0, sizeof(pItemInfo->Unknown0x023c));
-#endif
-#if defined(ROF2EMU) || defined(UFEMU)
-	memset(&pItemInfo->Unknown0x0238, 0, sizeof(pItemInfo->Unknown0x0238));
-	pItemInfo->FactionModType[0] = Item->factionmod1;
-	pItemInfo->FactionModType[1] = Item->factionmod2;
-	pItemInfo->FactionModType[2] = Item->factionmod3;
-	pItemInfo->FactionModType[3] = Item->factionmod4;
-	pItemInfo->FactionModValue[0] = Item->factionamt1;
-	pItemInfo->FactionModValue[1] = Item->factionamt2;
-	pItemInfo->FactionModValue[2] = Item->factionamt3;
-	pItemInfo->FactionModValue[3] = Item->factionamt4;
-#endif
-	strcpy_s(pItemInfo->CharmFile, Item->charmfile);
-	memset(&pItemInfo->MerchantGreedMod, 0, sizeof(pItemInfo->MerchantGreedMod));
-	memset(&pItemInfo->Clicky, 0, sizeof(pItemInfo->Clicky));
-	memset(&pItemInfo->Proc, 0, sizeof(pItemInfo->Proc));
-	memset(&pItemInfo->Worn, 0, sizeof(pItemInfo->Worn));
-	memset(&pItemInfo->Focus, 0, sizeof(pItemInfo->Focus));
-	memset(&pItemInfo->Scroll, 0, sizeof(pItemInfo->Scroll));
-	memset(&pItemInfo->Focus2, 0, sizeof(pItemInfo->Focus2));
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	memset(&pItemInfo->Mount, 0, sizeof(pItemInfo->Mount));
-	memset(&pItemInfo->Illusion, 0, sizeof(pItemInfo->Illusion));
-	memset(&pItemInfo->Familiar, 0, sizeof(pItemInfo->Familiar));
-#endif
-	pItemInfo->SkillMask[0] = 0;
-	pItemInfo->SkillMask[1] = 0;
-	pItemInfo->SkillMask[2] = 0;
-	pItemInfo->SkillMask[3] = 0;
-	pItemInfo->SkillMask[4] = 0;
-	pItemInfo->DmgBonusSkill = Item->extradmgskill;
-	pItemInfo->DmgBonusValue = Item->extradmgamt;
-	pItemInfo->CharmFileID = Item->charmfileid;
-	pItemInfo->FoodDuration = Item->foodduration;
-	pItemInfo->Combine = Item->bagtype;
-	pItemInfo->Slots = Item->bagslots;
-	pItemInfo->SizeCapacity = Item->bagsize;
-	pItemInfo->WeightReduction = Item->bagwr;
-	pItemInfo->BookType = Item->booktype;
-	pItemInfo->BookLang = Item->booklang;
-	strcpy_s(pItemInfo->BookFile, Item->filename);
-	pItemInfo->Favor = Item->favor;
-	pItemInfo->GuildFavor = Item->guildfavor;
-	pItemInfo->bIsFVNoDrop = Item->fvnodrop;
-	pItemInfo->Endurance = Item->endur;
-	pItemInfo->Attack = Item->attack;
-	pItemInfo->HPRegen = Item->regen;
-	pItemInfo->ManaRegen = Item->manaregen;
-	pItemInfo->EnduranceRegen = Item->enduranceregen;
-	pItemInfo->Haste = Item->haste;
-	pItemInfo->AnimationOverride = 0;
-	pItemInfo->PaletteTintIndex = 0;
-	//pItemInfo->DamShield = Item->damageshield;
-	pItemInfo->bNoPetGive = Item->nopet;
-	pItemInfo->bSomeProfile = 0;
-	//pItemInfo->bPotionBeltAllowed = 0;
-	//pItemInfo->NumPotionSlots = 0;
-	pItemInfo->SomeIDFlag = 0;
-	pItemInfo->StackSize = Item->stacksize;
-	pItemInfo->bNoStorage = 0;
-	pItemInfo->MaxPower = Item->powersourcecapacity;
-	pItemInfo->Purity = Item->purity;
-	pItemInfo->bIsEpic = 0;
-	pItemInfo->RightClickScriptID = 0;
-	pItemInfo->ItemLaunchScriptID = 0;
-	pItemInfo->QuestItem = Item->questitemflag;
-	pItemInfo->Expendable = Item->expendablearrow;
-	pItemInfo->Clairvoyance = Item->clairvoyance;
-	pItemInfo->SubClass = 0;
-	pItemInfo->bLoginRegReqItem = 0;
-	pItemInfo->Placeable = Item->placeable;
-	pItemInfo->bPlaceableIgnoreCollisions = 0;
-	pItemInfo->PlacementType = 0;
-	pItemInfo->RealEstateDefID = 0;
-	pItemInfo->PlaceableScaleRangeMin = 0;
-	pItemInfo->PlaceableScaleRangeMax = 0;
-	pItemInfo->RealEstateUpkeepID = 0;
-	pItemInfo->MaxPerRealEstate = 0;
-	//strpy_s(pItemInfo->HousepetFileName, );
-	memset(&pItemInfo->HousepetFileName, 0, sizeof(pItemInfo->HousepetFileName));
-	pItemInfo->TrophyBenefitID = 0;
-	pItemInfo->bDisablePlacementRotation = 0;
-	pItemInfo->bDisableFreePlacement = 0;
-	pItemInfo->NpcRespawnInterval = 0;
-	pItemInfo->PlaceableDefScale = 0;
-	pItemInfo->PlaceableDefHeading = 0;
-	pItemInfo->PlaceableDefPitch = 0;
-	pItemInfo->PlaceableDefRoll = 0;
-	pItemInfo->bInteractiveObject = 0;
-	pItemInfo->SocketSubClassCount = 0;
-	pItemInfo->SocketSubClass[0] = 0;
-	pItemInfo->SocketSubClass[1] = 0;
-	pItemInfo->SocketSubClass[2] = 0;
-	pItemInfo->SocketSubClass[3] = 0;
-	pItemInfo->SocketSubClass[4] = 0;
-	pItemInfo->SocketSubClass[5] = 0;
-	pItemInfo->SocketSubClass[6] = 0;
-	pItemInfo->SocketSubClass[7] = 0;
-	pItemInfo->SocketSubClass[8] = 0;
-	pItemInfo->SocketSubClass[9] = 0;
 
-	//pCursor->RefCount = Item->itemtype;
-	pCursor->Price = 0;
-	pCursor->Open = 0;
-	pCursor->Item1 = pItemInfo;
-	memset(&pCursor->ActorTag1, 0, sizeof(pCursor->ActorTag1));
-	pCursor->StackCount = 0;
-	pCursor->LastCastTime = 0;
-	pCursor->Tint = 0;
-	pCursor->MerchantSlot = 0;
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	pCursor->bCollected = 0;
-#endif
-	pCursor->ID = 0;
-	pCursor->ItemHash = 0;
-	pCursor->bItemNeedsUpdate = 0;
-	pCursor->OrnamentationIcon = 0;
-#if defined(ROF2EMU) || defined(UFEMU)
-	pCursor->ItemColor = 0;
-	pCursor->IsEvolvingItem = ((Item->evoid > 0 && Item->evoid < 10000) ? 1 : 0);
-	pCursor->EvolvingMaxLevel = Item->evomax;
-#else
-	bool IsEvolvingItem = ((Item->evoid > 0 && Item->evoid < 10000) ? 1 : 0);
+	ItemPtr pCursor = eqNew<ItemClient>();
+	pCursor->SetItemDefinition(pItemDef.get());
+
+	bool IsEvolvingItem = Item.evoid > 0 && Item.evoid < 10000;
 	if (IsEvolvingItem)
 	{
-		pCursor->pEvolutionData = new ItemEvolutionData;
-		pCursor->pEvolutionData->EvolvingMaxLevel = Item->evomax;
+		pCursor->pEvolutionData = SoeUtil::MakeShared<ItemEvolutionData>();
+		pCursor->pEvolutionData->EvolvingMaxLevel = Item.evomax;
 		pCursor->pEvolutionData->EvolvingExpPct = 0;
-		pCursor->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? Item->evolvinglevel : 0);
-		pCursor->pEvolutionData->GroupID = (IsEvolvingItem ? Item->evoid : (Item->loregroup > 0) ? Item->loregroup & 0xFFFF : 0);
+		pCursor->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? Item.evolvinglevel : 0);
+		pCursor->pEvolutionData->GroupID = (IsEvolvingItem ? Item.evoid : (Item.loregroup > 0) ? Item.loregroup & 0xFFFF : 0);
 		pCursor->pEvolutionData->LastEquipped = 0;
 	}
-#endif
-	pCursor->ScriptIndex = 0;
-	pCursor->ArmorType = -1;
-	memset(&pCursor->RealEstateArray, 0, sizeof(pCursor->RealEstateArray));
-	pCursor->bRealEstateItemPlaceable = 0;
-	pCursor->Charges = 0;
-	pCursor->NoteStatus = 0;
-	memset(&pCursor->Contents, 0, sizeof(pCursor->Contents));
-	pCursor->Power = 0;
-	pCursor->bRankDisabled = 0;
-	pCursor->RealEstateID = -1;
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	pCursor->bConvertable = 0;
-#endif
-	pCursor->bCopied = 0;
-	pCursor->bDisableAugTexture = 0;
-	memset(&pCursor->ItemGUID, 0, sizeof(pCursor->ItemGUID));
-#if defined(ROF2EMU) || defined(UFEMU)
-	pCursor->EvolvingExpOn = 0;
-	pCursor->EvolvingExpPct = 0;
-	pCursor->EvolvingCurrentLevel = (pCursor->IsEvolvingItem ? Item->evolvinglevel : 0);
-#endif
-	pCursor->MerchantQuantity = 0;
-	pCursor->NewArmorID = 0;
-	memset(&pCursor->ActorTag2, 0, sizeof(pCursor->ActorTag2));
-#if defined(ROF2EMU) || defined(UFEMU)
-	pCursor->GroupID = (pCursor->IsEvolvingItem ? Item->evoid : (Item->loregroup > 0) ? Item->loregroup & 0xFFFF : 0);
-#endif
-	memset(&pCursor->GlobalIndex, 0, sizeof(pCursor->GlobalIndex));
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	pCursor->ConvertItemID = 0;
-#endif
-	pCursor->NoDropFlag = 0;
-	pCursor->AugFlag = 0;
-#if defined(ROF2EMU) || defined(UFEMU)
-	pCursor->LastEquipped = 0;
-#endif
-	pCursor->RespawnTime = 0;
-	//pCursor->Filler1 = 0;
-	//pCursor->Filler2 = 0;
-	pCursor->Item2 = pItemInfo;
-	//pCursor->DontKnow2 = 0;
-	pCursorOrg;
+
+	char cLink[MAX_STRING];
 	GetItemLink(pCursor, cLink);
-	LocalFree(pItemInfo);
-#if !defined(ROF2EMU) && !defined(UFEMU)
-	if (IsEvolvingItem)
-	{
-		pCursor->pEvolutionData.reset();
-	}
-#endif
-	LocalFree(pCursor);
-	//if (!pItemInfo->ItemNumber % 10000)
-		//WriteChatf("MQ2LinkDB:: %d:(%s) %s", pItemInfo->ItemNumber, pItemInfo->Name, cLink);
+
+	return std::string(cLink);
 }
 
-// 
-// static VOID ConvertItemsDotTxt (void) 
-// 
-static VOID ConvertItemsDotTxt(void)
+static void ConvertItemsDotTxt()
 {
 	WriteChatf("MQ2LinkDB: Importing items.txt...");
-	DebugSpewAlways("MQ2LinkDB:: Importing items.txt...");
 
 	char cFilename[MAX_PATH];
-	sprintf_s(cFilename, "%s\\items.txt", gszINIPath);
-    FILE * File = 0;
-    errno_t err = fopen_s(&File, cFilename, "rt");
-    if (!err) { 
-	    FILE * LinkFile = 0;
-	    err = fopen_s(&LinkFile, cLinkDBFileName, "wt");
+	sprintf_s(cFilename, "%s\\items.txt", gPathResources);
+	FILE* File = nullptr;
+	errno_t err = fopen_s(&File, cFilename, "rt");
+	if (!err)
+	{
+		FILE* LinkFile = nullptr;
+		err = fopen_s(&LinkFile, cLinkDBFileName, "wt");
 
-        if (!err) { 
-			if (abPresent != NULL) {
-				bKnowTotal = false;
-				free(abPresent);
-				abPresent = NULL;
-			}
+		if (!err)
+		{
+			// reset this so we read it in next time.
+			presentItemIDs.clear();
+			bKnowTotal = false;
 
 			WriteChatf("MQ2LinkDB: Generating links...");
-			DebugSpewAlways("MQ2LinkDB: Generating links...");
 			char cLine[MAX_STRING * 2] = { 0 };
-			char cLink[MAX_STRING] = { 0 };
 			SODEQITEM SODEQItem;
 
-			bool bFirst = true;;
+			bool bFirst = true;
 			int iCount = 0;
-			while (fgets(cLine, MAX_STRING * 2, File) != NULL) {
+
+			while (fgets(cLine, MAX_STRING * 2, File) != nullptr)
+			{
 				cLine[strlen(cLine) - 1] = '\0';
 
-				if (bFirst) {
+				if (bFirst)
+				{
 					// quick sanity check on file
 					int nCheck = strcnt(cLine, '|');
-					if (nCheck != 294) {
+					if (nCheck != 294)
+					{
 						WriteChatf("MQ2LinkDB: \arInvalid items.txt file. \ay%d\ax fields found. Aborting", nCheck);
-						DebugSpewAlways("MQ2LinkDB: \arInvalid items.txt file. Aborting");
 						break;
 					}
 
 					bFirst = false;
 				}
-				else {
+				else
+				{
 					memset(&SODEQItem, 0, sizeof(SODEQItem));
 					SODEQReadItem(&SODEQItem, cLine);
 
-					if (SODEQItem.id) {
-						memset(&cLink, 0, sizeof(cLink));
-						SODEQMakeLink(&SODEQItem, cLink);
+					if (SODEQItem.id)
+					{
+						std::string sLink = SODEQMakeLink(SODEQItem);
 
-                        //WriteChatf("Test ItemID[%d]: %d", SODEQItem.id, ItemID(cLink)); 
+						//WriteChatf("Test ItemID[%d]: %d", SODEQItem.id, ItemID(cLink));
 
-						fprintf(LinkFile, "%s\n", cLink);
+						fprintf(LinkFile, "%s\n", sLink.c_str());
 						iCount++;
 					}
 				}
@@ -2497,19 +2083,18 @@ static VOID ConvertItemsDotTxt(void)
 			DebugSpewAlways("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount);
 
 			fclose(LinkFile);
-			fclose(File);
 		}
-		else {
+		else
+		{
 			WriteChatf("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
 			DebugSpewAlways("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
 		}
 
 		fclose(File);
 	}
-	else {
+	else
+	{
 		WriteChatf("MQ2LinkDB: \arSource file not found (items.txt)");
 		DebugSpewAlways("MQ2LinkDB: \arSource file not found (items.txt)");
 	}
-
-	return;
 }
