@@ -1,7 +1,122 @@
-// MQ2LinkDB: Persoanl Link Database
-// Original Author:  Ziggy
-
-// TODO: Auto update from 13th floor website
+// MQ2LinkDB
+//
+// Version 4.0 - 07 Feb 2014 - Originally by Ziggy,
+//  then updated for DoD, PoR, SS, BS, modifications by SwiftyMUSE
+//  updated for CotF
+//  rewritten for mqnext by brainiac
+//
+// Personal link database
+//
+// Usage: /link               - Display statistics
+//        /link /import       - Import a items.txt file from items.sodeq.org
+//                              into an updated MQ2LinkDB.txt file.
+//        /link /max n        - Set number of maximum displayed results
+//                              (default 10)
+//        /link /scan on|off  - Turn on and off scanning incoming chat
+//        /link /click on|off -
+//        /link search        - Find items containing search string
+//
+// Incoming chat is scanned for links if specified, and the database is
+// checked for this item. If it's not in database, it will be added.
+//
+// The TLO LinkDB is also added by this plugin. The LinkDB TLO supports
+// a simple lookup for items by name and returns the item's link text.
+// Note that since MQ2ChatWnd strips out stuff, you can't click links in
+// there, so you'll have to stick the output in a variable then use
+// a macro to control where you want it to go.
+//
+// The TLO supports substring matches and exact matches. If you pass
+// =Item Name to the TLO, it will do an exact match. If you just do
+// Item Name, then it will use a prefix match. If there are multiple
+// items (i.e. multiple items with the same name in an exact, or
+// multiple items with the same prefix in a non-exact), then the TLO
+// will return the first match and you will have no idea there were
+// multiple results.
+//
+// Example TLO usage:
+// /declare BABYLINK string outer
+// /varset BABYLINK ${LinkDB[=Baby Joseph Sayer]}
+//
+// /shout OMG I'm a dork! I have ${LinkDB[=Baby Joseph Sayer]} in my pack. Ha!
+//
+// If the item is not found, the TLO returns an empty string, so you probably don't
+// want to be directly shouting about Baby Joseph Sayer in your backpack.
+// If you do and misspell his name, you will end up shouting about an empty string
+// which isn't recommended.
+//
+//
+// Changes:
+// 4.0  Rewritten for mqnext using new item link parsing apis provided by EQLib and
+//      string_view. Now is able to parse multiple links on the same message. Parts of
+//      defunct linkbot removed. 
+// 3.4  Fixed a crash when spell links was parsed (Eqmule Jan 09 2020)
+// 3.3  Updated to not require an item on cursor to do / link / import and to not poof
+//      the item used as the template. (Eqmule Jan 08 2020)
+// 3.2  Updated for new link format for TBL.
+// 3.1  Updated for new link format for TBL.
+// 3.0  Added string safety. (Eqmule 07-22-2016)
+// 2.4  Updated to include new sodeq db dump format as the input based on old
+//      13th-floor database.
+// 2.3  Fixed exact search link clicking. Replaced entire import function to use
+//      a dump from Lucy. 13th-floor is no longer updating their file so it is of no
+//      real use to us anymore. I will keep an updated MQ2LinkDB.txt file on the MQ2
+//      site for everyones use. The file will be updated on a monthly basis, at best.
+// 2.2  Updated for CotF release. Linkbot ability is not working
+// 2.1  Updated to fix charm links.  Added all the new fields as defined on 13-floor and
+//      corrected a long standing issue with an escaped delimiter in the names of 3 items.
+//      You NO LONGER have to remove the left and right hand entries, they are created
+//      as links correctly.
+// 2.0  This version, with linkbot ability, must remain in the VIP forums.
+//      Added linkbot functionality using an authorization list.  Will automatically
+//      click an exact match link.  Added the ability to retrieve a link based on
+//      the item id using /item #.
+//
+//      Linkbot called with tells using the !link command.  It will respond to the
+//      caller with the list of links as if you entered a /link command directly.
+// 1.7  Added simple TLO for accessing links from item names.
+// 1.6  Updated for Broken Seas item format changes. Thanks to ksmith and
+//      Nilwean at EQItems. See
+//      http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=229
+// 1.5  Updated for 12/5 item format changes. Thanks to Nilwean and ksmith
+//      at EQItems. See
+//      http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=215
+// 1.4  Updated for SS expansion. Thanks to ksmith at EQItems. See
+//          http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=202
+// 1.3  Updated for PoR expansion. Thanks to ksmith at EQItems. See
+//          http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=170
+//
+// 1.2  Added ScanChat ini setting to toggle whether to snarf links from
+//          seen chatlines. Defaults to on to simulate current behavior.
+//          Also updated for EQItems fixes to their export which was missing
+//          a field.
+//
+// 1.1  Updated to reflect new link format. Thanks to ksmith and Nilwean
+//          and topside from
+//          http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=145
+//
+// 1.06 Alpha sorts the list
+//      Makes sure that if an exact match is found, then it's displayed, even
+//      if we've already displayed max results
+//      Only searches the name for the item name, previously searched the
+//      whole link (eg: EB41 would have matched 2 items from their hash key)
+//
+// 1.05 Fixed the really stupid mistake with item bitfield. And found out
+//      a new equation:
+//      Moved items.txt import into plugin (You can still use it external if
+//      you want)
+//
+// 1.04 Added Max item list so we don't get too spammed by results.
+//
+// 1.03 Added some more clues for debugging purposes (do: /link /quiet to show)
+//
+// 1.02 Fixed file locking fudge up. Should now add items to database properly.
+//
+// 1.01 Added item index so we know already which items the DB has to save a
+//      bunch of time with checking when adding new items
+//
+// TODO:
+// Auto update from 13th floor website
+//
 
 #include <mq/Plugin.h>
 
@@ -9,11 +124,20 @@
 #include <vector>
 
 PreSetup("MQ2LinkDB");
-PLUGIN_VERSION(3.4);
+PLUGIN_VERSION(4.0);
 
-#define MY_STRING "MQ2LinkDB \ar4.0\ax by Ziggy, modifications by SwiftyMUSE"
+#define MY_STRING "MQ2LinkDB \ar4.0"
 
-static std::vector<std::string> SearchLinkDB(const char* szSearchText, bool bExact);
+struct SearchResult
+{
+	std::string line;
+	size_t textPos, textLength;
+
+	SearchResult(std::string line, size_t start, size_t length)
+		: line(std::move(line)), textPos(start), textLength(length) {}
+};
+
+static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool bExact, int limit = -1);
 static void ConvertItemsDotTxt();
 
 // Keep the last 10 results we've done and then cycle through.
@@ -25,10 +149,8 @@ constexpr int LAST_RESULT_CACHE_SIZE = 10;
 static char g_tloLastResult[LAST_RESULT_CACHE_SIZE][256];
 static int g_iLastResultPosition = 0;
 
-static bool bReplyMode = false;
 static bool bQuietMode = true;               // Display debug chatter?
 static int iAddedThisSession = 0;            // How many new links found since startup
-static int iTotalInDB = 0;                   // Number of links in db
 static bool bKnowTotal = false;              // Do we know how many links in db?
 static size_t iMaxResults = 10;                 // Display at most this many results
 static int iFindItemID = 0;                  // Item ID to /link
@@ -37,20 +159,14 @@ static bool bScanChat = true;                // Scan incoming chat for links
 static bool bClickLinks = false;             // click on link generated?
 static bool bReadFileInFind = false;         // should we reload the file when looking for new links?
 
-#if !defined(ROF2EMU) && !defined(UFEMU)
-constexpr int START_LINKTEXT = (0x5a + 2);   // starting position of link text found in MQ2Web__ParseItemLink_x
-#else
-constexpr int START_LINKTEXT = (0x37 + 2);
-#endif
-
 static std::unordered_set<int> presentItemIDs;
 static bool bPresentItemIDsLoaded = false;
 
-static char cLink[MAX_STRING / 4] = { 0 };
+static char szLink[MAX_STRING / 4] = { 0 };
 static int iCurrentID = 0;
 static int iNextID = 0;
 
-char cLinkDBFileName[MAX_PATH] = { 0 };
+char szLinkDBFileName[MAX_PATH] = { 0 };
 
 class MQ2LinkType : public MQ2Type
 {
@@ -78,7 +194,7 @@ public:
 		switch (static_cast<LinkMembers>(pMember->ID))
 		{
 		case LinkMembers::Link:
-			strcpy_s(DataTypeTemp, cLink);
+			strcpy_s(DataTypeTemp, szLink);
 			Dest.Ptr = &DataTypeTemp[0];
 			Dest.Type = datatypes::pStringType;
 			return true;
@@ -96,18 +212,18 @@ public:
 
 	bool ToString(MQVarPtr VarPtr, char* Destination) override
 	{
-		strcpy_s(Destination, MAX_STRING, cLink);
+		strcpy_s(Destination, MAX_STRING, szLink);
 		return true;
 	}
 };
 MQ2LinkType* pLinkType = nullptr;
 
-static int strcnt(const char* buffer, char cChar)
+static int strcnt(const char* buffer, char ch)
 {
 	int count = 0;
 	for (int i = 0; buffer[i] != 0; ++i)
 	{
-		if (buffer[i] == cChar)
+		if (buffer[i] == ch)
 			count++;
 	}
 	return count;
@@ -128,11 +244,11 @@ bool dataLinkDB(const char* szIndex, MQTypeVar& Ret)
 	const char* pItemName = szIndex;
 	bool bExact = pItemName[0] == '=' && ++pItemName;
 
-	std::vector<std::string> results = SearchLinkDB(pItemName, bExact);
+	std::vector<SearchResult> results = SearchLinkDB(pItemName, bExact, 1);
 
 	if (!results.empty())
 	{
-		strcpy_s(g_tloLastResult[lastResultPosition], results[0].c_str());
+		strcpy_s(g_tloLastResult[lastResultPosition], results[0].line.c_str());
 		g_iLastResultPosition = (g_iLastResultPosition + 1) & LAST_RESULT_CACHE_SIZE;
 	}
 	else
@@ -149,66 +265,41 @@ static int VerifyLinks();
 
 static void SaveSettings()
 {
-	char cNumber[16] = { 0 };
-	_itoa_s(iMaxResults, cNumber, 10);
-
-	WritePrivateProfileString("Settings", "MaxResults", cNumber, INIFileName);
-	WritePrivateProfileString("Settings", "ScanChat", bScanChat ? "1" : "0", INIFileName);
-	WritePrivateProfileString("Settings", "ClickLinks", bClickLinks ? "1" : "0", INIFileName);
+	WritePrivateProfileInt("Settings", "MaxResults", iMaxResults, INIFileName);
+	WritePrivateProfileBool("Settings", "ScanChat", bScanChat, INIFileName);
+	WritePrivateProfileBool("Settings", "ClickLinks", bClickLinks, INIFileName);
 }
 
 static void LoadSettings()
 {
-	sprintf_s(cLinkDBFileName, "%s\\MQ2LinkDB.txt", gPathResources);
+	sprintf_s(szLinkDBFileName, "%s\\MQ2LinkDB.txt", gPathResources);
 
 	iMaxResults = GetPrivateProfileInt("Settings", "MaxResults", 10, INIFileName);
 	if (iMaxResults < 1) iMaxResults = 1;
 
-	int iScanChat = GetPrivateProfileInt("Settings", "ScanChat", 1, INIFileName);
-	bScanChat = iScanChat > 0;
-
-	int iClickLinks = GetPrivateProfileInt("Settings", "ClickLinks", 0, INIFileName);
-	bClickLinks = iClickLinks > 0;
+	bScanChat = GetPrivateProfileBool("Settings", "ScanChat", true, INIFileName);
+	bClickLinks = GetPrivateProfileBool("Settings", "ClickLinks", false, INIFileName);
 }
 
-static int ItemID(const char* cLink)
+static int ItemID(std::string_view link)
 {
-	char cMid[6];
+	ItemLinkInfo linkInfo;
+	if (!ParseItemLink(link, linkInfo))
+		return 0;
 
-	// Skip \x12 and first number
-	memcpy(cMid, cLink + 2, 5);
-	cMid[5] = '\0';
-
-	return (int)(strtol(cMid, nullptr, 16));
-}
-
-// Make sure no augs in the link
-static bool IsAuged(const char* cLink)
-{
-	char cMid[6];
-	for (int i = 0; i < 5; i++)
-	{
-		memcpy(cMid, cLink + 7 + (i * 5), 5);
-		cMid[5] = '\0';
-		if (atoi(cMid) != 0)
-		{
-			return true;
-		}
-	}
-
-	return false;
+	return linkInfo.itemID;
 }
 
 void CreateIndex()
 {
 	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
 	if (err) return;
 
-	char cLine[MAX_STRING] = { 0 };
-	while (fgets(cLine, MAX_STRING, File) != nullptr)
+	char szLine[MAX_STRING] = { 0 };
+	while (fgets(szLine, MAX_STRING, File) != nullptr)
 	{
-		int iItemID = ItemID(cLine);
+		int iItemID = ItemID(szLine);
 		presentItemIDs.insert(iItemID);
 	}
 
@@ -217,17 +308,19 @@ void CreateIndex()
 	fclose(File);
 }
 
-static bool FindLink(const char* cLink)
+static bool FindLink(std::string_view link)
 {
-	int iItemID = ItemID(cLink);
+	ItemLinkInfo findLink;
+	if (!ParseItemLink(link, findLink))
+		return false;
 
 	if (bPresentItemIDsLoaded)
 	{
-		if (presentItemIDs.count(iItemID))
+		if (presentItemIDs.count(findLink.itemID))
 		{
 			if (!bQuietMode)
 			{
-				WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID);
+				WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", findLink.itemID);
 			}
 
 			return true;
@@ -240,7 +333,7 @@ static bool FindLink(const char* cLink)
 	}
 
 	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
 	if (err) return false;
 
 	// Since we're scanning the file anyway, we'll make the index here to save some time, and to
@@ -250,36 +343,37 @@ static bool FindLink(const char* cLink)
 	bool bRet = false;
 	bool replaceAugLink = false;
 	int replacePos = -1;
-	char cLine[1024] = { 0 };
+	char szLine[1024] = { 0 };
 
-	while (fgets(cLine, 1024, File) != nullptr)
+	while (fgets(szLine, 1024, File) != nullptr)
 	{
-		cLine[strlen(cLine) - 1] = '\0';   // No LF pls
-
-		int itemId = ItemID(cLine);
-		presentItemIDs.insert(itemId);
-
-		if (ItemID(cLine) == iItemID)
+		ItemLinkInfo linkInfo;
+		if (ParseItemLink(szLine, linkInfo))
 		{
-			bRet = true;
+			int itemId = linkInfo.itemID;
+			presentItemIDs.insert(itemId);
 
-			if (IsAuged(cLine) && !IsAuged(cLink))
+			if (itemId == findLink.itemID)
 			{
-				if (strlen(cLine) == strlen(cLink))
+				bRet = true;
+
+				// Try to replace a socketed item with an unsocketed item, if possible.
+				if (linkInfo.IsSocketed() && !findLink.IsSocketed())
 				{
 					replaceAugLink = true;
 					replacePos = ftell(File);
 				}
-			}
-			else
-			{
-				if (!bQuietMode)
+				else
 				{
-					WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", iItemID);
+					if (!bQuietMode)
+					{
+						WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", findLink.itemID);
+					}
 				}
 			}
 		}
 	}
+
 	fclose(File);
 	bPresentItemIDsLoaded = true;
 	bKnowTotal = true;
@@ -289,22 +383,22 @@ static bool FindLink(const char* cLink)
 	{
 		if (!bQuietMode)
 		{
-			WriteChatf("MQ2LinkDB: Replacing auged link with un-auged link for item \ay%d\ax", iItemID);
+			WriteChatf("MQ2LinkDB: Replacing auged link with un-auged link for item \ay%d\ax", findLink.itemID);
 		}
 
 		FILE* File2 = nullptr;
-		err = fopen_s(&File2, cLinkDBFileName, "r+");
+		err = fopen_s(&File2, szLinkDBFileName, "r+");
 		if (!err)
 		{
-			fseek(File2, replacePos - strlen(cLine) - 2, SEEK_SET);
+			fseek(File2, replacePos - strlen(szLine) - 2, SEEK_SET);
 
 			// Double check position - paranoia!
-			char cTemp[10];
-			fread(cTemp, 10, 1, File2);
-			if (memcmp(cTemp, cLink, 8) == 0)
+			char szTemp[10];
+			fread(szTemp, 10, 1, File2);
+			if (memcmp(szTemp, link.data(), 8) == 0)
 			{
-				fseek(File2, replacePos - strlen(cLine) - 2, SEEK_SET); // Seek same place again
-				fwrite(cLink, strlen(cLink), 1, File2);
+				fseek(File2, replacePos - strlen(szLine) - 2, SEEK_SET); // Seek same place again
+				fwrite(link.data(), link.length(), 1, File2);
 			}
 			else if (!bQuietMode)
 			{
@@ -322,7 +416,7 @@ static bool FindLink(const char* cLink)
 	return bRet;
 }
 
-static void StoreLink(const char* cLink)
+static void StoreLink(std::string_view link)
 {
 	if (!bPresentItemIDsLoaded)
 	{
@@ -330,7 +424,7 @@ static void StoreLink(const char* cLink)
 	}
 
 	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, cLinkDBFileName, "at");
+	errno_t err = fopen_s(&File, szLinkDBFileName, "at");
 	if (err)
 	{
 		if (!bQuietMode)
@@ -338,119 +432,81 @@ static void StoreLink(const char* cLink)
 		return;
 	}
 
-	fputs(cLink, File);
+	fwrite(link.data(), link.length(), 1, File);
 	fputs("\n", File);
 	fclose(File);
 
-	int iItemID = ItemID(cLink);
+	int iItemID = ItemID(link);
 	iAddedThisSession++;
 	presentItemIDs.insert(iItemID);
 
 	if (!bQuietMode)
 	{
-		WriteChatf("MQ2LinkDB: Stored link for item ID: \ay%d\ax (\ay%d\ax stored this session)", ItemID(cLink), iAddedThisSession);
+		WriteChatf("MQ2LinkDB: Stored link for item ID: \ay%d\ax %.*s (\ay%d\ax stored this session)", iItemID, link.length(), link.data(), iAddedThisSession);
 	}
 }
 
-static char* LinkExtract(char* cLink)
-{
-	std::string sTemp = cLink;
-	char* cTemp = sTemp.data();
-
-	char* cEnd = strchr(cTemp + START_LINKTEXT, '\x12');
-	int iLen = 1;
-
-	if (cEnd != nullptr)
-	{
-		if (*(cTemp + 1) == '\x30')      // Item link
-		{
-			*(cEnd + 1) = '\0';
-			iLen = strlen(cTemp);
-
-			//WriteChatf ("MQ2LinkDB: Chat - %s", cTemp + 1);
-
-			if (!FindLink(cTemp))
-			{
-				StoreLink(cTemp);
-			}
-		}
-	}
-
-	return cLink + iLen;
-}
-
-static void ChatTell(SPAWNINFO* pChar, char* cLine)
-{
-	DebugSpew("MQ2LinkDB::ChatTell(%s)", cLine);
-	char szCmd[MAX_STRING];
-
-	if (!bReplyMode)
-	{
-		sprintf_s(szCmd, "Linkdb told you, '%s'", cLine);
-		dsp_chat_no_events(szCmd, USERCOLOR_TELL, false);
-	}
-	else
-	{
-		sprintf_s(szCmd, ";tell %s %s", pChar->Name, cLine);
-
-		//WriteChatf("MQ2LinkDB::DoCommand(%s)", cTemp);
-		//pEverQuest->send_tell(pChar->Name,cLine);
-		DoCommand(pChar, szCmd);
-		//dsp_chat_no_events(szCmd, USERCOLOR_TELL, false);
-	}
-}
-
-template <unsigned int _Size>
-static void DoParameters(char(&cParams)[_Size])
+// Parse parameters. Return value is an item id to search for, or 0 if none.
+static int ParseParameters(std::string_view paramString)
 {
 	bool bAnyParams = false;
-	_strlwr_s(cParams);
-	char* cWord = nullptr;
-	char* next_token1 = nullptr;
+	int searchItemID = 0;
 
-	cWord = strtok_s(cParams, " ", &next_token1);
-	while (cWord != nullptr)
+	std::vector<std::string_view> params = split_view(paramString, ' ');
+	size_t pos = 0;
+
+	auto GetNextParam = [&](std::string_view& param) -> bool
 	{
-		if (strcmp(cWord, "/quiet") == 0)
+		param = std::string_view{};
+
+		while (pos < params.size())
+		{
+			param = params[pos++];
+			param = trim(param);
+			if (!param.empty())
+				break;
+		}
+
+		return !param.empty();
+	};
+
+	std::string_view param;
+	while (GetNextParam(param))
+	{
+		if (ci_equals(param, "/quiet"))
 		{
 			bQuietMode = !bQuietMode;
 			WriteChatf("MQ2LinkDB: Quiet mode \ay%s\ax", bQuietMode ? "on" : "off");
-			bAnyParams = true;
 
+			bAnyParams = true;
 		}
-		else if (strcmp(cWord, "/max") == 0)
+		else if (ci_equals(param, "/max"))
 		{
-			cWord = strtok_s(nullptr, " ", &next_token1);
-			if (atoi(cWord) > 0)
+			GetNextParam(param);
+
+			iMaxResults = GetIntFromString(param, 0);
+			if (iMaxResults > 0)
 			{
-				iMaxResults = atoi(cWord);
 				WriteChatf("MQ2LinkDB: Max results now \ay%d\ax", iMaxResults);
 				SaveSettings();
 			}
+
 			bAnyParams = true;
 		}
-		else if (strcmp(cWord, "/item") == 0)
+		else if (ci_equals(param, "/item"))
 		{
-			cWord = strtok_s(nullptr, " ", &next_token1);
-			if (atoi(cWord) > 0)
-			{
-				iFindItemID = atoi(cWord);
-			}
+			GetNextParam(param);
+
+			searchItemID = GetIntFromString(param, 0);
 			bAnyParams = true;
 		}
-		else if (strcmp(cWord, "/click") == 0)
+		else if (ci_equals(param, "/click"))
 		{
-			cWord = strtok_s(nullptr, " ", &next_token1);
-			if (cWord)
+			GetNextParam( param);
+
+			if (!param.empty())
 			{
-				if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
-				{
-					bClickLinks = true;
-				}
-				else
-				{
-					bClickLinks = false;
-				}
+				bClickLinks = GetBoolFromString(param, false);
 			}
 			else
 			{
@@ -461,67 +517,44 @@ static void DoParameters(char(&cParams)[_Size])
 			SaveSettings();
 			bAnyParams = true;
 		}
-		else if (strcmp(cWord, "/scan") == 0)
+		else if (ci_equals(param, "/scan"))
 		{
-			cWord = strtok_s(nullptr, " ", &next_token1);
-			if (cWord)
+			GetNextParam(param);
+
+			if (!param.empty())
 			{
-				if (_stricmp(cWord, "on") == 0 || _stricmp(cWord, "yes") == 0 || _stricmp(cWord, "true") == 0 || _stricmp(cWord, "1") == 0)
-				{
-					bScanChat = true;
-				}
-				else
-				{
-					bScanChat = false;
-				}
+				bScanChat = GetBoolFromString(param, false);
 			}
 			else
 			{
 				bScanChat = !bScanChat;
 			}
+
 			WriteChatf("MQ2LinkDB: Will%sscan incoming chat for item links.", bScanChat ? " " : " NOT ");
 			SaveSettings();
 			bAnyParams = true;
 		}
-		else if (strcmp(cWord, "/user") == 0)
+		else if (ci_equals(param, "/import"))
 		{
-			cWord = strtok_s(nullptr, " ", &next_token1);
-
-			WriteChatf("MQ2LinkDB: Will respond to tells from %s.", cWord);
-			WritePrivateProfileString("Toons", cWord, "on", INIFileName);
-
+			ConvertItemsDotTxt();
 			bAnyParams = true;
 		}
-		else if (strcmp(cWord, "/import") == 0)
+		else if (ci_equals(param, "/verify"))
 		{
-			if (FindFirstItem())
-			{
-				ConvertItemsDotTxt();
-				bAnyParams = true;
-			}
-		}
-		else if (strcmp(cWord, "/verify") == 0)
-		{
-			cWord = strtok_s(nullptr, " ", &next_token1);
+			GetNextParam(param);
 
-			iVerifyCount = 1;
-			if (atoi(cWord) > 0)
-			{
-				iVerifyCount = atoi(cWord);
-			}
-
+			iVerifyCount = GetIntFromString(param, 1);
 			VerifyLinks();
 
 			bAnyParams = true;
 		}
-
-		cWord = strtok_s(nullptr, " ", &next_token1);
 	}
 
 	if (!bAnyParams)
 	{
 		WriteChatf("%s", MY_STRING);
-		WriteChatf("MQ2LinkDB: Syntax: \ay/link [/max n] [/scan on|off] [/click on|off] [/import \ar(needs at least 1 item in inventory or on cursor)\ay] [/item #][/verify #][search string]\ax");
+		WriteChatf("MQ2LinkDB: Syntax: \ay/link [/max #] [/scan on|off] [/click on|off] [/import] [/item #] [/verify #] [search string]\ax");
+
 		if (bKnowTotal)
 		{
 			WriteChatf("MQ2LinkDB: \ay%d\ax links in database, \ay%d\ax links added this session", presentItemIDs.size(), iAddedThisSession);
@@ -530,7 +563,9 @@ static void DoParameters(char(&cParams)[_Size])
 		{
 			WriteChatf("MQ2LinkDB: \ay%d\ax links added this session", iAddedThisSession);
 		}
+
 		WriteChatf("MQ2LinkDB: Max Results \ay%d\ax", iMaxResults);
+
 		if (bScanChat)
 		{
 			WriteChatf("MQ2LinkDB: Scanning incoming chat for item links");
@@ -539,6 +574,7 @@ static void DoParameters(char(&cParams)[_Size])
 		{
 			WriteChatf("MQ2LinkDB: Not scanning incoming chat");
 		}
+
 		if (bClickLinks)
 		{
 			WriteChatf("MQ2LinkDB: Auto-clicking links on exact matches");
@@ -548,31 +584,40 @@ static void DoParameters(char(&cParams)[_Size])
 			WriteChatf("MQ2LinkDB: Not auto-clicking links on exact matches");
 		}
 	}
+
+	return searchItemID;
 }
 
 // This routine will send a link click to EQ to retrieve the item data
-void ClickLink(SPAWNINFO* pChar, char* szLink)
+void ShowItem(std::string_view link)
 {
-	DebugSpew("MQ2LinkDB::ClickLink(%s)", szLink);
+	DebugSpew("MQ2LinkDB::ClickLink(%.*s)", link.length(), link.data());
 
-	char szCommand[MAX_STRING] = { 0 };
-	char szLinkStruct[MAX_STRING] = { 0 };
-	strncpy_s(szLinkStruct, szLink + 2, START_LINKTEXT - 2);
+	TextTagInfo tagInfo = ExtractLink(link);
+	if (tagInfo.tagCode == ETAG_ITEM)
+	{
+		// Extract the link code from the link. Two characters after the start (\x12 + tag)
+		// runs right up to the text of the link. Don't include the text.
+		std::string_view linkData = tagInfo.link.substr(2);
+		linkData = linkData.substr(0, tagInfo.text.data() - linkData.data());
 
-	sprintf_s(szCommand, "/notify ChatWindow CW_ChatOutput link %s", szLinkStruct);
-	DoCommand(pChar, szCommand);
+		char szCommand[MAX_STRING] = { 0 };
+		sprintf_s(szCommand, "/notify ChatWindow CW_ChatOutput link %.*s", linkData.length(), linkData.data());
+
+		EzCommand(szCommand);
+	}
 }
 
 // Do the actual local file search. This searches the local name->link
 // data file line by line returning matches.
-static std::vector<std::string> SearchLinkDB(const char* szSearchText, bool bExact)
+static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool bExact, int limit)
 {
-	std::vector<std::string> results;
+	std::vector<SearchResult> results;
 
 	iNextID = 0; iCurrentID = 0;
 	int iFound = 0, iTotal = 0;
 	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
 	if (err)
 	{
 		WriteChatf("MQ2LinkDB: No item database yet");
@@ -583,16 +628,18 @@ static std::vector<std::string> SearchLinkDB(const char* szSearchText, bool bExa
 
 	if (!bQuietMode)
 	{
-		WriteChatf("MQ2LinkDB: Searching for '\ay%s\ax'...", szSearchText);
+		WriteChatf("MQ2LinkDB: Searching for '\ay%.*s\ax'...", searchText.length(), searchText.data());
 	}
 
-	char cLine[256] = { 0 };
-	char cCopy[256] = { 0 };
+	char szLine[256] = { 0 };
 	bool bNextID = false;
 
-	while (fgets(cLine, sizeof(cLine), File) != nullptr)
+	while (fgets(szLine, sizeof(szLine), File) != nullptr)
 	{
-		int iItemID = ItemID(cLine);
+		std::string_view line{ szLine };
+		line = trim(line);
+
+		int iItemID = ItemID(line);
 		presentItemIDs.insert(iItemID);
 
 		if (bNextID)
@@ -601,20 +648,22 @@ static std::vector<std::string> SearchLinkDB(const char* szSearchText, bool bExa
 			iNextID = iItemID;
 		}
 
-		cLine[strlen(cLine) - 1] = '\0';   // No LF pls
-		strcpy_s(cCopy, cLine + START_LINKTEXT);
-
-		if ((iItemID == iFindItemID) || ci_equals(cCopy, szSearchText, bExact))
+		if (limit == -1 || (int)results.size() < limit)
 		{
-			results.emplace_back(cLine);
+			TextTagInfo info = ExtractLink(line);
 
-			if (iFindItemID || (strlen(cLine + START_LINKTEXT + 1) == strlen(szSearchText)
-				&& _memicmp(cLine + START_LINKTEXT, szSearchText, strlen(szSearchText)) == 0))
+			if ((iItemID == iFindItemID) || ci_equals(info.text, searchText, bExact))
 			{
-				bNextID = true;
-			}
+				size_t start = info.text.data() - line.data();
+				results.emplace_back(std::string(line), start, info.text.length());
 
-			iFound++;
+				if (iFindItemID || ci_equals(info.text, searchText))
+				{
+					bNextID = true;
+				}
+
+				iFound++;
+			}
 		}
 
 		iTotal++;
@@ -630,27 +679,27 @@ int VerifyLinks()
 {
 	constexpr int VERIFYLINKCOUNT = 100;
 
-	char cFilename[MAX_PATH];
-	sprintf_s(cFilename, "%s\\links.txt", gPathResources);
+	char szFilename[MAX_PATH];
+	sprintf_s(szFilename, "%s\\links.txt", gPathResources);
 	FILE* File = nullptr;
 
-	errno_t err = fopen_s(&File, cLinkDBFileName, "rt");
+	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
 	if (!err)
 	{
 		//WriteChatf ("MQ2LinkDB: Verifying links.txt...");
-		char cLine[MAX_STRING];
+		char szLine[MAX_STRING];
 
 		int iLinkCount = 0;
 		int iEndingLinkCount = iVerifyCount + VERIFYLINKCOUNT - 1;
 
-		while (fgets(cLine, MAX_STRING, File) != nullptr)
+		while (fgets(szLine, MAX_STRING, File) != nullptr)
 		{
-			cLine[strlen(cLine) - 1] = '\0';
+			szLine[strlen(szLine) - 1] = '\0';
 			iLinkCount++;
 
 			if (iLinkCount >= iVerifyCount)
 			{
-				ChatTell(pLocalPlayer, cLine);
+				WriteChatf("%s", szLine);
 				if (iLinkCount >= iEndingLinkCount) break;
 			}
 		}
@@ -673,37 +722,38 @@ int VerifyLinks()
 	return 0;
 }
 
-static void CommandLink(SPAWNINFO* pChar, char* szLine)
+static void CommandLink(SPAWNINFO* pChar, char* szLine_)
 {
-	char szLLine[MAX_STRING] = { 0 };
-	strcpy_s(szLLine, szLine);
+	// We copy because DoParameters will mutate the string.
+	std::string_view line{ szLine_ };
+
 	iFindItemID = 0;
 	bRunNextCommand = true;
 
-	if (strlen(szLLine) < 3)
+	if (line.length() < 3)
 	{
-		char szEmpty[MAX_STRING] = { 0 };
-		DoParameters(szEmpty);
-		return;       // We don't list entire DB. that's just not funny
+		ParseParameters(line);
+		return;
 	}
 
-	if (szLLine[0] == '/' || szLLine[0] == '-')
+	if (line[0] == '/' || line[0] == '-')
 	{
-		DoParameters(szLLine);
+		ParseParameters(line);
 		if (!iFindItemID)
 			return;
 	}
 
-	std::vector<std::string> results = SearchLinkDB(szLLine, false);
-
+	std::vector<SearchResult> results = SearchLinkDB(line, false);
 	bool bForcedExtra = false;
 
 	if (!results.empty())
 	{
 		// Sort the list
-		std::sort(results.begin(), results.end(), [](const std::string& a, const std::string& b)
+		std::sort(results.begin(), results.end(), [](const SearchResult& a, const SearchResult& b)
 		{
-			return std::string_view{ a }.substr(START_LINKTEXT) < std::string_view{ b }.substr(START_LINKTEXT);
+			std::string_view a_view = std::string_view{ a.line }.substr(a.textPos, a.textLength);
+			std::string_view b_view = std::string_view{ b.line }.substr(b.textPos, b.textLength);
+			return a_view < b_view;
 		});
 
 		// Show list
@@ -711,61 +761,59 @@ static void CommandLink(SPAWNINFO* pChar, char* szLine)
 		{
 			bool bShow = i < iMaxResults;
 
-			const char* szResult = results[i].c_str();
-			char cTemp[256] = { 0 };
-			strcpy_s(cTemp, szResult);
+			char szTemp[256] = { 0 };
+			strcpy_s(szTemp, results[i].line.c_str());
 
-			if (IsAuged(szResult))
+			ItemLinkInfo linkInfo;
+			if (ParseItemLink(results[i].line, linkInfo))
 			{
-				strcat_s(cTemp, " (Augmented)");
-			}
+				if (linkInfo.IsSocketed())
+					strcat_s(szTemp, " (Augmented)");
 
-			if (iFindItemID
-				|| (strlen(szResult + START_LINKTEXT + 1) == strlen(szLLine)
-					&& _memicmp(szResult + START_LINKTEXT, szLLine, strlen(szLLine)) == 0))
-			{
-				strcpy_s(cLink, szResult);
-				strcat_s(cTemp, " <Exact Match>");
-				bShow = true;        // We display this result even if we've already shown iMaxResults count
-				bForcedExtra = i >= iMaxResults;
-				if (bClickLinks && !bReplyMode)
-					ClickLink(pChar, cLink);
+				if (iFindItemID || ci_equals(linkInfo.itemName, line))
+				{
+					strcat_s(szTemp, " <Exact Match>");
+					bShow = true;        // We display this result even if we've already shown iMaxResults count
+					bForcedExtra = i >= iMaxResults;
+					if (bClickLinks)
+						ShowItem(results[i].line);
+				}
 			}
 
 			if (bShow)
 			{
-				ChatTell(pLocalPlayer, cTemp);
+				WriteChatf("%s", szTemp);
 			}
 		}
 	}
 
-	char cTemp3[128] = { 0 };
-	char cTemp[128] = { 0 };
-	sprintf_s(cTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", results.size(), iTotalInDB);
-	sprintf_s(cTemp, "Found %d items from database of %d total items", results.size(), iTotalInDB);
+	char szTemp3[128] = { 0 };
+	char szTemp[128] = { 0 };
+	sprintf_s(szTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", results.size(), presentItemIDs.size());
+	sprintf_s(szTemp, "Found %d items from database of %d total items", results.size(), presentItemIDs.size());
 
 	if (results.size() > iMaxResults)
 	{
-		char cTemp2[64];
-		sprintf_s(cTemp2, " - \arList capped to \ay%d\ar results", iMaxResults);
-		strcat_s(cTemp3, cTemp2);
+		char szTemp2[64];
+		sprintf_s(szTemp2, " - \arList capped to \ay%d\ar results", iMaxResults);
+		strcat_s(szTemp3, szTemp2);
 
-		sprintf_s(cTemp2, " - List capped to %d results", iMaxResults);
-		strcat_s(cTemp, cTemp2);
+		sprintf_s(szTemp2, " - List capped to %d results", iMaxResults);
+		strcat_s(szTemp, szTemp2);
 
 		if (bForcedExtra)
 		{
-			strcat_s(cTemp, " plus exact match");
-			strcat_s(cTemp3, " plus exact match");
+			strcat_s(szTemp, " plus exact match");
+			strcat_s(szTemp3, " plus exact match");
 		}
 	}
 
 	if (!bQuietMode)
 	{
-		WriteChatf("%s", cTemp3);
+		WriteChatf("%s", szTemp3);
 	}
-	ChatTell(pLocalPlayer, cTemp);
-	bReplyMode = false;
+
+	WriteChatf("%s", szTemp);
 }
 
 // Called once, when the plugin is to initialize
@@ -1043,145 +1091,7 @@ PLUGIN_API void ShutdownPlugin()
 	251 a.NO_GROUND
 	252 a.NO_LOOT
 */
-enum ETagCodes
-{
-	ETAG_ITEM = 0,
-	ETAG_PLAYER,
-	ETAG_SPAM,
-	ETAG_ACHIEVEMENT,
-	ETAG_DIALOG_RESPONSE,
-	ETAG_COMMAND,
-	ETAG_SPELL,
-	ETAG_COUNT
-};
 
-const int TagSizes[ETAG_COUNT] = {
-#if defined(ROF2EMU) || defined(UFEMU)
-	58,
-#else
-	93,
-#endif
-	3,
-	3,
-	0,
-	0,
-	0,
-	4,
-};
-constexpr char TAG_CHAR = 0x12;
-
-int GetItemTag(const char* Str, char** Ptr)
-{
-	int ret = -1;
-	CXStr str = Str;
-	for (int i = 0; i < str.GetLength(); i++)
-	{
-		wchar_t ch = str.GetUnicode(i);
-		if (ch == TAG_CHAR)
-		{
-			*Ptr = (char*)&str.data()[i];
-			int StartIndex = i + 2;
-			int EndIndex = -1;
-			while (StartIndex < str.GetLength())
-			{
-				if (str.GetUnicode(StartIndex) == TAG_CHAR)
-				{
-					EndIndex = StartIndex;
-					break;
-				}
-				StartIndex++;
-			}
-			if (EndIndex == -1)
-			{
-				str.Delete(i, 1);
-				i--;
-				continue;
-			}
-			int tagCode = str.GetUnicode(i + 1) - ((wchar_t)'0');
-			int tagCode2 = str.GetUnicode(i + 2) - ((wchar_t)'0');
-			switch (tagCode)
-			{
-			case ETAG_PLAYER:
-			{
-				ret = ETAG_PLAYER;
-				CXStr pName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
-				if (pName.GetChar(0) == ':')
-				{
-					pName.Delete(0, 1);
-				}
-				str.Delete(i, (EndIndex - i) + 1);
-				str.Insert(i, pName);
-				i += pName.GetLength() - 1;
-				break;
-			}
-			case ETAG_SPAM:
-			{
-				ret = ETAG_SPAM;
-				str.Delete(i, (EndIndex - i) + 1);
-				str.Insert(i, "(SPAM)");
-				i += 5;
-				break;
-			}
-			case ETAG_ACHIEVEMENT:
-			{
-				ret = ETAG_ACHIEVEMENT;
-				int iTagSize = i;
-				str.FindNext('\'', iTagSize);
-				iTagSize = iTagSize + 2 - i;
-				CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
-				str.Delete(i, (EndIndex - i) + 1);
-				str.Insert(i, itemName);
-				i += itemName.GetLength() - 1;
-			}
-			break;
-			case ETAG_DIALOG_RESPONSE:
-			{
-				ret = ETAG_DIALOG_RESPONSE;
-				str.Delete(i, 2);
-				str.Delete(EndIndex - 2, 1);
-				i = EndIndex - 3;
-			}
-			break;
-			case ETAG_COMMAND:
-			{
-				ret = ETAG_COMMAND;
-				str.Delete(i, 2);
-				str.Delete(EndIndex - 2, 1);
-				i = EndIndex - 3;
-			}
-			break;
-			case ETAG_SPELL:
-			{
-				if (tagCode2 != 3)
-				{
-					Sleep(0);
-				}
-				ret = ETAG_SPELL;
-				CXStr copy = str;
-				int iTagSize = i;
-				str.FindNext('\'', iTagSize);
-				iTagSize = iTagSize + 2 - i;
-				CXStr itemName = str.Mid(i + (iTagSize - 1), EndIndex - (i + (iTagSize - 1)));
-				str.Delete(i, (EndIndex - i) + 1);
-				str.Insert(i, itemName);
-				i += itemName.GetLength() - 1;
-			}
-			break;
-			case ETAG_ITEM:
-			{
-				ret = ETAG_ITEM;
-				char* NewPtr = LinkExtract(*Ptr);
-				CXStr itemName = str.Mid(i + (TagSizes[tagCode] - 1), EndIndex - (i + (TagSizes[tagCode] - 1)));
-				str.Delete(i, (EndIndex - i) + 1);
-				str.Insert(i, itemName);
-				i += itemName.GetLength() - 1;
-			}
-			break;
-			}
-		}
-	}
-	return ret;
-}
 // This is called every time EQ shows a line of chat with CEverQuest::dsp_chat,
 // but after MQ filters and chat events are taken care of.
 PLUGIN_API DWORD OnIncomingChat(char* Line, DWORD Color)
@@ -1189,10 +1099,18 @@ PLUGIN_API DWORD OnIncomingChat(char* Line, DWORD Color)
 	//"Soandso hit a venomshell pest for 106012 points of magic damage by \x1263^56723^'Claw of Ellarr\x12."
 	if (bScanChat)
 	{
-		if (strchr(Line, TAG_CHAR))
+		TextTagInfo tags[MAX_EXTRACT_LINKS];
+		size_t count = ExtractLinks(Line, tags, MAX_EXTRACT_LINKS);
+
+		for (size_t i = 0; i < count; ++i)
 		{
-			char* cPtr = nullptr;
-			int tag = GetItemTag(Line, &cPtr);
+			if (tags[i].tagCode == ETAG_ITEM)
+			{
+				if (!FindLink(tags[i].link))
+				{
+					StoreLink(tags[i].link);
+				}
+			}
 		}
 	}
 	return 0;
@@ -1810,64 +1728,37 @@ void SODEQSetField(SODEQITEM* Item, int iField, const char* cField)
 	}
 }
 
-static void SODEQReadItem(SODEQITEM* Item, char* cLine)
+static void SODEQReadItem(SODEQITEM* Item, char* szLine)
 {
-	char* cPtr = cLine;
+	char* ptr = szLine;
 	int iField = 0;
 
-	while (*cPtr)
+	while (*ptr)
 	{
-		char cField[256];
-		char* cDest = cField;
+		char szField[256];
+		char* pDest = szField;
 		bool bEscape = false;
 
 		//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
-		while ((*cPtr != '|' || bEscape) && *cPtr != '\0')
+		while ((*ptr != '|' || bEscape) && *ptr != '\0')
 		{
-			if (bEscape) bEscape = !bEscape; else bEscape = *cPtr == '\\';
-			if (bEscape) { cPtr++; /*DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);*/ continue; }
-			*(cDest++) = *(cPtr++);
+			if (bEscape) bEscape = !bEscape; else bEscape = *ptr == '\\';
+			if (bEscape) { ptr++; /*DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);*/ continue; }
+			*(pDest++) = *(ptr++);
 			//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
 		}
-		*cDest = '\0';
-		cPtr++;
+		*pDest = '\0';
+		ptr++;
 
 		//WriteChatf("cField: %s", cField);
-		SODEQSetField(Item, iField++, cField);
+		SODEQSetField(Item, iField++, szField);
 	}
 }
 
-ItemClient* FindFirstItem()
+static std::string SODEQMakeLink(const SODEQITEM& Item, ItemPtr pItem)
 {
-	if (!pCharData) return nullptr;
+	ItemDefinition* pItemDef = pItem->GetItemDefinition();
 
-	// check cursor
-	if (const ItemPtr& pItem = pCharData->GetInventorySlot(InvSlot_Cursor))
-		return pItem.get();
-
-	ItemContainerInstance containers[] =
-	{
-		eItemContainerPossessions,
-		eItemContainerMountKeyRingItems,
-		eItemContainerIllusionKeyRingItems,
-		eItemContainerFamiliarKeyRingItems,
-		eItemContainerHeroForgeKeyRingItems,
-	};
-	for (ItemContainerInstance container : containers)
-	{
-		if (ItemContainer* pContainer = GetItemContainerByType(container))
-		{
-			for (const ItemPtr& pItem : *pContainer)
-				return pItem.get();
-		}
-	}
-
-	return nullptr;
-}
-
-static std::string SODEQMakeLink(const SODEQITEM& Item)
-{
-	ItemDefinitionPtr pItemDef = SoeUtil::MakeShared<ItemDefinition>();
 	strcpy_s(pItemDef->Name, Item.name);
 	strcpy_s(pItemDef->LoreName, Item.lore);
 	pItemDef->ItemNumber = Item.id;
@@ -2000,38 +1891,38 @@ static std::string SODEQMakeLink(const SODEQITEM& Item)
 	pItemDef->LoreEquipped = 1;
 #endif
 
-	ItemPtr pCursor = eqNew<ItemClient>();
-	pCursor->SetItemDefinition(pItemDef.get());
-
 	bool IsEvolvingItem = Item.evoid > 0 && Item.evoid < 10000;
 	if (IsEvolvingItem)
 	{
-		pCursor->pEvolutionData = SoeUtil::MakeShared<ItemEvolutionData>();
-		pCursor->pEvolutionData->EvolvingMaxLevel = Item.evomax;
-		pCursor->pEvolutionData->EvolvingExpPct = 0;
-		pCursor->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? Item.evolvinglevel : 0);
-		pCursor->pEvolutionData->GroupID = (IsEvolvingItem ? Item.evoid : (Item.loregroup > 0) ? Item.loregroup & 0xFFFF : 0);
-		pCursor->pEvolutionData->LastEquipped = 0;
+		pItem->pEvolutionData = SoeUtil::MakeShared<ItemEvolutionData>();
+		pItem->pEvolutionData->EvolvingMaxLevel = Item.evomax;
+		pItem->pEvolutionData->EvolvingExpPct = 0;
+		pItem->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? Item.evolvinglevel : 0);
+		pItem->pEvolutionData->GroupID = (IsEvolvingItem ? Item.evoid : (Item.loregroup > 0) ? Item.loregroup & 0xFFFF : 0);
+		pItem->pEvolutionData->LastEquipped = 0;
+	}
+	else
+	{
+		pItem->pEvolutionData.reset();
 	}
 
-	char cLink[MAX_STRING];
-	GetItemLink(pCursor, cLink);
-
-	return std::string(cLink);
+	char link[MAX_STRING] = { 0 };
+	GetItemLink(pItem, link);
+	return std::string(link);
 }
 
 static void ConvertItemsDotTxt()
 {
 	WriteChatf("MQ2LinkDB: Importing items.txt...");
 
-	char cFilename[MAX_PATH];
-	sprintf_s(cFilename, "%s\\items.txt", gPathResources);
+	char szFilename[MAX_PATH];
+	sprintf_s(szFilename, "%s\\items.txt", gPathResources);
 	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, cFilename, "rt");
+	errno_t err = fopen_s(&File, szFilename, "rt");
 	if (!err)
 	{
 		FILE* LinkFile = nullptr;
-		err = fopen_s(&LinkFile, cLinkDBFileName, "wt");
+		err = fopen_s(&LinkFile, szLinkDBFileName, "wt");
 
 		if (!err)
 		{
@@ -2040,20 +1931,25 @@ static void ConvertItemsDotTxt()
 			bKnowTotal = false;
 
 			WriteChatf("MQ2LinkDB: Generating links...");
-			char cLine[MAX_STRING * 2] = { 0 };
+			char szLine[MAX_STRING * 2] = { 0 };
 			SODEQITEM SODEQItem;
 
 			bool bFirst = true;
 			int iCount = 0;
 
-			while (fgets(cLine, MAX_STRING * 2, File) != nullptr)
+			// Set up our reusable item to fill with data for linking.
+			ItemDefinitionPtr pItemDef = SoeUtil::MakeShared<ItemDefinition>();
+			ItemPtr pItem = eqNew<ItemClient>();
+			pItem->SetItemDefinition(pItemDef.get());
+
+			while (fgets(szLine, MAX_STRING * 2, File) != nullptr)
 			{
-				cLine[strlen(cLine) - 1] = '\0';
+				szLine[strlen(szLine) - 1] = '\0';
 
 				if (bFirst)
 				{
 					// quick sanity check on file
-					int nCheck = strcnt(cLine, '|');
+					int nCheck = strcnt(szLine, '|');
 					if (nCheck != 294)
 					{
 						WriteChatf("MQ2LinkDB: \arInvalid items.txt file. \ay%d\ax fields found. Aborting", nCheck);
@@ -2065,11 +1961,11 @@ static void ConvertItemsDotTxt()
 				else
 				{
 					memset(&SODEQItem, 0, sizeof(SODEQItem));
-					SODEQReadItem(&SODEQItem, cLine);
+					SODEQReadItem(&SODEQItem, szLine);
 
 					if (SODEQItem.id)
 					{
-						std::string sLink = SODEQMakeLink(SODEQItem);
+						std::string sLink = SODEQMakeLink(SODEQItem, pItem);
 
 						//WriteChatf("Test ItemID[%d]: %d", SODEQItem.id, ItemID(cLink));
 
