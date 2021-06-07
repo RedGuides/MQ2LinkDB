@@ -1767,7 +1767,7 @@ static std::string SODEQMakeLink(const SODEQITEM& Item, ItemPtr pItem)
 	pItemDef->IconNumber = Item.icon;
 	pItemDef->Weight = Item.weight;
 	pItemDef->NoRent = Item.norent;
-	pItemDef->NoDrop = Item.notransfer;
+	pItemDef->IsDroppable = Item.notransfer;
 	pItemDef->Attuneable = Item.attuneable;
 	pItemDef->Heirloom = Item.heirloom;
 	pItemDef->Collectible = Item.collectible;
@@ -1852,7 +1852,7 @@ static std::string SODEQMakeLink(const SODEQITEM& Item, ItemPtr pItem)
 	pItemDef->DmgBonusValue = Item.extradmgamt;
 	pItemDef->CharmFileID = Item.charmfileid;
 	pItemDef->FoodDuration = Item.foodduration;
-	pItemDef->Combine = static_cast<uint8_t>(Item.bagtype);
+	pItemDef->ContainerType = static_cast<uint8_t>(Item.bagtype);
 	pItemDef->Slots = static_cast<uint8_t>(Item.bagslots);
 	pItemDef->SizeCapacity = static_cast<uint8_t>(Item.bagsize);
 	pItemDef->WeightReduction = static_cast<uint8_t>(Item.bagwr);
