@@ -48,7 +48,7 @@
 // Changes:
 // 4.0  Rewritten for mqnext using new item link parsing apis provided by EQLib and
 //      string_view. Now is able to parse multiple links on the same message. Parts of
-//      defunct linkbot removed. 
+//      defunct linkbot removed.
 // 3.4  Fixed a crash when spell links was parsed (Eqmule Jan 09 2020)
 // 3.3  Updated to not require an item on cursor to do / link / import and to not poof
 //      the item used as the template. (Eqmule Jan 08 2020)
@@ -1829,7 +1829,7 @@ static std::string SODEQMakeLink(const SODEQITEM& Item, ItemPtr pItem)
 	pItemDef->SpellDamage = Item.spelldmg;
 	pItemDef->Prestige = Item.prestige;
 	pItemDef->ItemClass = static_cast<uint8_t>(Item.itemtype);
-	pItemDef->ArmorProps.Material = Item.material;
+	pItemDef->ArmorProps.material = Item.material;
 	pItemDef->AugData.Sockets[0].Type = Item.augslot1type;
 	pItemDef->AugData.Sockets[0].bVisible = Item.augslot1unk2;
 	pItemDef->AugData.Sockets[1].Type = Item.augslot2type;
