@@ -837,261 +837,6 @@ PLUGIN_API void ShutdownPlugin()
 	delete pLinkType;
 }
 
-/*
-	1 a.ITEM_NUMBER
-	2 a.NAME
-	3 a.LORE_DESCRIPTION
-	4 a.ADVANCED_LORE_TEXT_FILENAME
-	5 a.TYPE
-	6 a.VALUE
-	7 CONCAT('IT',a.ACTOR_TAG)
-	8 a.IMAGE_NUMBER
-	9 a.SIZE_ITEM
-	10 a.WEIGHT
-	11 a.MAX_ITEM_COUNT
-	12 a.ITEM_CLASS
-	13 a.IS_LORE
-	14 a.IS_ARTIFACT
-	15 a.IS_SUMMONED
-	16 a.REQUIRED_LEVEL
-	17 a.RECOMMENDED_LEVEL
-	18 a.RECOMMENDED_SKILL
-	19 a.NO_DROP
-	20 a.RENTABLE
-	21 a.NO_ALT_TRANSFER
-	22 a.FV_NO_DROP
-	23 a.NO_PET_EQUIP
-	24 a.CHARM
-	25 a.EARS
-	26 a.HEAD
-	27 a.FACE
-	28 a.NECK
-	29 a.SHOULDERS
-	30 a.ARMS
-	31 a.BACK
-	32 a.WRISTS
-	33 a.RANGE
-	34 a.HANDS
-	35 a.PRIMARY
-	36 a.SECONDARY
-	37 a.FINGERS
-	38 a.CHEST
-	39 a.LEGS
-	40 a.FEET
-	41 a.WAIST
-	42 a.POWER_SLOT
-	43 a.AMMO
-	44 a.WARRIOR_USEABLE
-	45 a.CLERIC_USEABLE
-	46 a.PALADIN_USEABLE
-	47 a.RANGER_USEABLE
-	48 a.SHADOWKNIGHT_USEABLE
-	49 a.DRUID_USEABLE
-	50 a.MONK_USEABLE
-	51 a.BARD_USEABLE
-	52 a.ROGUE_USEABLE
-	53 a.SHAMAN_USEABLE
-	54 a.NECROMANCER_USEABLE
-	55 a.WIZARD_USEABLE
-	56 a.MAGICIAN_USEABLE
-	57 a.ENCHANTER_USEABLE
-	58 a.BEASTLORD_USEABLE
-	59 a.BERSERKER_USEABLE
-	60 a.MERCENARY_USABLE
-	61 a.HUMAN_USEABLE
-	62 a.BARBARIAN_USEABLE
-	63 a.ERUDITE_USEABLE
-	64 a.WOODELF_USEABLE
-	65 a.HIGHELF_USEABLE
-	66 a.DARKELF_USEABLE
-	67 a.HALFELF_USEABLE
-	68 a.DWARF_USEABLE
-	69 a.TROLL_USEABLE
-	70 a.OGRE_USEABLE
-	71 a.HALFLING_USEABLE
-	72 a.GNOME_USEABLE
-	73 a.IKSAR_USEABLE
-	74 a.VAHSHIR_USEABLE
-	75 a.FROGLOK_USEABLE
-	76 a.DRAKKIN_USEABLE
-	77 a.TEMPLATE_USEABLE
-	78 a.REQ_AGNOSTIC
-	79 a.REQ_BERTOXXULOUS
-	80 a.REQ_BRELLSERILIS
-	81 a.REQ_CAZICTHULE
-	82 a.REQ_EROLLISIMARR
-	83 a.REQ_FIZZLETHORP
-	84 a.REQ_INNORUUK
-	85 a.REQ_KARANA
-	86 a.REQ_MITHMARR
-	87 a.REQ_PREXUS
-	88 a.REQ_QUELLIOUS
-	89 a.REQ_RALLOSZEK
-	90 a.REQ_RODCETNIFE
-	91 a.REQ_SOLUSEKRO
-	92 a.REQ_TRIBUNAL
-	93 a.REQ_TUNARE
-	94 a.REQ_VEESHAN
-	95 a.MODFACTION1_NUM
-	96 a.MODFACTION1_VALUE
-	97 a.MODFACTION2_NUM
-	98 a.MODFACTION2_VALUE
-	99 a.MODFACTION3_NUM
-	100 a.MODFACTION3_VALUE
-	101 a.MODFACTION4_NUM
-	102 a.MODFACTION4_VALUE
-	103 a.GEM_SIZE
-	104 a.SOCKET_CLASS
-	105 a.SOLVENT_ITEM_ID
-	106 a.POINT_TYPE
-	107 a.POINT_THEME_BIT_MASK
-	108 a.POINT_COST
-	109 a.POINT_BUY_BACK_PERCENT
-	110 a.ADVENTURE_ESTEEM_NEEDED
-	111 a.FOOD_DURATION
-	112 a.LIGHT_TYPE
-	113 a.MAGIC
-	114 a.SKIN_TYPE
-	115 a.ARMOR_VARIANT
-	116 a.ARMOR_MAT
-	117 a.R_TINT
-	118 a.G_TINT
-	119 a.B_TINT
-	120 a.ANIMATION_OVERRIDE
-	121 a.TINT_PALETTE_INDEX
-	122 a.MERCHANT_MULTIPLIER
-	123 a.LOG
-	124 a.LOOT_LOG
-	125 a.REQ_AVATAR
-	126 a.SKILL_MOD
-	127 a.SKILL_BONUS
-	128 a.SPECIAL_SKILL_CAP
-	129 a.POOF_ON_DEATH
-	130 a.INSTRUMENT_TYPE
-	131 a.INSTRUMENT_PERCENTAGE_MOD
-	132 a.SCRIPTID
-	133 a.SCRIPT_FILE_NAME
-	134 a.TRADESKILL
-	135 a.TRIBUTE_VALUE
-	136 a.GUILD_TRIBUTE_VALUE
-	137 a.HIGH_PROFILE
-	138 a.IS_POTION_BELT_ALLOWED
-	139 a.NUM_POTION_SLOTS
-	140 a.CAN_USE_FILTER_ID
-	141 a.RIGHT_CLICK_SCRIPT_ID
-	142 a.IS_QUEST_ITEM
-	143 a.NO_ENDLESS_QUIVER
-	144 a.POWER_CHARGES
-	145 a.POWER_PURITY
-	146 a.IS_EPIC_1
-	147 a.IS_EPIC_15
-	148 a.IS_EPIC_2
-	149 b.STR_MOD
-	150 b.INT_MOD
-	151 b.WIS_MOD
-	152 b.AGI_MOD
-	153 b.DEX_MOD
-	154 b.STA_MOD
-	155 b.CHA_MOD
-	156 b.HP_MOD
-	157 b.MANA_MOD
-	158 b.AC_MOD
-	159 b.ENDURANCE_MOD
-	160 b.SAVE_MAGIC_MOD
-	161 b.SAVE_FIRE_MOD
-	162 b.SAVE_COLD_MOD
-	163 b.SAVE_DISEASE_MOD
-	164 b.SAVE_POISON_MOD
-	165 b.SAVE_CORRUPTION_MOD
-	166 c.HASTE
-	167 c.ATTACK
-	168 c.HP_REGEN
-	169 c.MANA_REGEN
-	170 c.ENDURANCE_REGEN
-	171 c.DAMAGE_SHIELD
-	172 c.COMBAT_EFFECTS
-	173 c.SHIELDING
-	174 c.SPELL_SHIELDING
-	175 c.AVOIDANCE
-	176 c.ACCURACY
-	177 c.STUN_RESIST
-	178 c.STRIKETHROUGH
-	179 c.SKILL_DAMAGE_NUM
-	180 c.SKILL_DAMAGE_MOD
-	181 c.DOT_SHIELDING
-	182 d.DELAY
-	183 d.BASE_DAMAGE
-	184 d.ITEM_RANGE
-	185 d.BANE_RACE
-	186 d.BANE_BODYTYPE
-	187 d.RACE_BANE_DAMAGE
-	188 d.BODYTYPE_BANE_DAMAGE
-	189 d.ELEMENT_CRIT
-	190 d.ELEMENT_DAMAGE
-	191 e.CONTAINER_TYPE
-	192 e.CONTAINER_CAPACITY
-	193 e.CONTAINER_ITEM_SIZE_LIMIT
-	194 e.CONTAINER_WEIGHT_RDX
-	195 f.NOTE_TYPE
-	196 f.NOTE_LANGUAGE
-	197 f.NOTE_TEXTFILE
-	198 d.BACKSTAB_DAMAGE
-	199 c.DAMAGE_SHIELD_MITIGATION
-	200 b.HEROIC_STR_MOD
-	201 b.HEROIC_INT_MOD
-	202 b.HEROIC_WIS_MOD
-	203 b.HEROIC_AGI_MOD
-	204 b.HEROIC_DEX_MOD
-	205 b.HEROIC_STA_MOD
-	206 b.HEROIC_CHA_MOD
-	207 b.HEROIC_SAVE_MAGIC_MOD
-	208 b.HEROIC_SAVE_FIRE_MOD
-	209 b.HEROIC_SAVE_COLD_MOD
-	210 b.HEROIC_SAVE_DISEASE_MOD
-	211 b.HEROIC_SAVE_POISON_MOD
-	212 b.HEROIC_SAVE_CORRUPTION_MOD
-	213 c.HEAL_AMOUNT
-	214 c.SPELL_DAMAGE
-	215 c.CLAIRVOYANCE
-	216 a.SUB_CLASS
-	217 a.LOGIN_REGISTRATION_REQUIRED
-	218 a.LAUNCH_SCRIPT_ID
-	219 a.HEIRLOOM
-	220 g.EQG_ID
-	221 g.PLACEMENT_FLAGS
-	222 g.IGNORE_COLLISIONS
-	223 g.PLACEMENT_TYPE
-	224 g.REAL_ESTATE_DEF_ID
-	225 g.PLACEABLE_SCALE_RANGE_MIN
-	226 g.PLACEABLE_SCALE_RANGE_MAX
-	227 g.REAL_ESTATE_UPKEEP_ID
-	228 g.MAX_PER_REAL_ESTATE
-	229 g.NPC_FILENAME
-	230 g.TROPHY_BENEFIT_ID
-	231 g.DISABLE_PLACEMENT_ROTATION
-	232 g.DISABLE_FREE_PLACEMENT
-	233 g.NPC_RESPAWN_INTERVAL
-	234 g.PLACEABLE_SCALE_DEFAULT
-	235 g.PLACEABLE_ORIENTATION_HEADING
-	236 g.PLACEABLE_ORIENTATION_PITCH
-	237 g.PLACEABLE_ORIENTATION_ROLL
-	238 a.NO_BANK
-	239 CONCAT('IT',a.SECONDARY_ACTOR_TAG)
-	240 g.IS_INTERACTIVE_OBJECT
-	241 a.SKILL_MOD_OFFSET
-	242 a.SOCKET_SUB_CLASSES
-	243 a.NEW_ARMOR_ID
-	244 a.ITEM_RANK
-	245 a.SOCKET_SKIN_TYPE_MASK
-	246 a.IS_COLLECTIBLE
-	247 a.NO_DESTROY
-	248 a.NO_NPC
-	249 a.NO_ZONE
-	250 a.CREATOR_ID
-	251 a.NO_GROUND
-	252 a.NO_LOOT
-*/
-
 // This is called every time EQ shows a line of chat with CEverQuest::dsp_chat,
 // but after MQ filters and chat events are taken care of.
 PLUGIN_API DWORD OnIncomingChat(char* Line, DWORD Color)
@@ -1116,10 +861,87 @@ PLUGIN_API DWORD OnIncomingChat(char* Line, DWORD Color)
 	return 0;
 }
 
+//============================================================================
 
-// SODEQ converter
-struct SODEQITEM
+class SODEQItemConverter
 {
+public:
+	// item ptr used for creating an item link using eq code.
+	ItemPtr m_item;
+
+	SODEQItemConverter()
+	{
+		// Set up our reusable item to fill with data for linking.
+		ItemDefinitionPtr pItemDef = SoeUtil::MakeShared<ItemDefinition>();
+		m_item = eqNew<ItemClient>();
+		m_item->SetItemDefinition(pItemDef.get());
+	}
+
+	virtual ~SODEQItemConverter()
+	{
+	}
+
+	std::string ConvertToItemLink(char* szLine)
+	{
+		std::string output;
+
+		ReadItemLine(szLine);
+		if (IsValid())
+		{
+			output = CreateItemLink();
+		}
+
+		return output;
+	}
+
+protected:
+	void ReadItemLine(char* szLine)
+	{
+		char* ptr = szLine;
+		int iField = 0;
+
+		while (*ptr)
+		{
+			char szField[256];
+			char* pDest = szField;
+			bool bEscape = false;
+
+			//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
+			while ((*ptr != '|' || bEscape) && *ptr != '\0')
+			{
+				if (bEscape) bEscape = !bEscape; else bEscape = *ptr == '\\';
+				if (bEscape) { ptr++; /*DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);*/ continue; }
+				*(pDest++) = *(ptr++);
+				//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
+			}
+			*pDest = '\0';
+			ptr++;
+
+			//WriteChatf("cField: %s", cField);
+			SetField(iField++, szField);
+		}
+	}
+
+	std::string CreateItemLink() const
+	{
+		PopulateItem(m_item);
+
+		char link[MAX_STRING] = { 0 };
+		FormatItemLink(link, MAX_STRING, m_item.get());
+		return std::string(link);
+	}
+
+	virtual void SetField(int fieldNum, const char* fieldText) = 0;
+	virtual void PopulateItem(ItemPtr pItem) const = 0;
+	virtual bool IsValid() const = 0;
+};
+
+#pragma region SODEQ Item Converter - 295 columns
+
+// SODEQ converter - 295 columns
+class SODEQItemConverter295 : public SODEQItemConverter
+{
+public:
 	int  itemclass;
 	char name[ITEM_NAME_LEN];
 	char lore[LORE_NAME_LEN];
@@ -1418,497 +1240,597 @@ struct SODEQITEM
 	short verified;
 	char verifiedby[255];
 	char collectversion[0x20];
-};
 
-void SODEQSetField(SODEQITEM* Item, int iField, const char* cField)
-{
-	int lValue = atol(cField);
-	double dValue = atof(cField);
-	bool bValue = lValue > 0;
-	switch (iField) {
-	case   0: Item->itemclass = lValue; break;
-	case   1: strcpy_s(Item->name, cField); break;
-	case   2: strcpy_s(Item->lore, cField); break;
-
-	case   3: strcpy_s(Item->idfile, cField); break;
-	case   4: strcpy_s(Item->lorefile, cField); break;
-	case   5: Item->id = lValue; break;
-	case   6: Item->weight = lValue; break;
-	case   7: Item->norent = bValue; break;
-	case   8: Item->nodrop = bValue; break;
-	case   9: Item->attuneable = bValue; break;
-	case  10: Item->size = lValue; break;
-	case  11: Item->slots = lValue; break;
-	case  12: Item->price = lValue; break;
-	case  13: Item->icon = lValue; break;
-	case  14: Item->benefitflag = lValue; break;
-	case  15: Item->tradeskills = bValue; break;
-	case  16: Item->cr = lValue; break;
-	case  17: Item->dr = lValue; break;
-	case  18: Item->pr = lValue; break;
-	case  19: Item->mr = lValue; break;
-	case  20: Item->fr = lValue; break;
-	case  21: Item->svcorruption = lValue; break;
-	case  22: Item->astr = lValue; break;
-	case  23: Item->asta = lValue; break;
-	case  24: Item->aagi = lValue; break;
-	case  25: Item->adex = lValue; break;
-	case  26: Item->acha = lValue; break;
-	case  27: Item->aint = lValue; break;
-	case  28: Item->awis = lValue; break;
-	case  29: Item->hp = lValue; break;
-	case  30: Item->mana = lValue; break;
-	case  31: Item->endur = lValue; break;
-	case  32: Item->ac = lValue; break;
-	case  33: Item->regen = lValue; break;
-	case  34: Item->manaregen = lValue; break;
-	case  35: Item->enduranceregen = lValue; break;
-	case  36: Item->classes = lValue; break;
-	case  37: Item->races = lValue; break;
-	case  38: Item->deity = lValue; break;
-	case  39: Item->skillmodvalue = lValue; break;
-	case  40: Item->skillmodmax = lValue; break;
-	case  41: Item->skillmodtype = lValue; break;
-	case  42: Item->skillmodextra = lValue; break;
-	case  43: Item->banedmgrace = lValue; break;
-	case  44: Item->banedmgbody = lValue; break;
-	case  45: Item->banedmgraceamt = lValue; break;
-	case  46: Item->banedmgamt = lValue; break;
-	case  47: Item->magic = lValue; break;
-	case  48: Item->foodduration = lValue; break;
-	case  49: Item->reqlevel = lValue; break;
-	case  50: Item->reclevel = lValue; break;
-	case  51: Item->recskill = lValue; break;
-	case  52: Item->bardtype = lValue; break;
-	case  53: Item->bardvalue = lValue; break;
-	case  54: Item->unk002 = lValue; break;
-	case  55: Item->unk003 = lValue; break;
-	case  56: Item->unk004 = lValue; break;
-	case  57: Item->light = lValue; break;
-	case  58: Item->delay = lValue; break;
-	case  59: Item->elemdmgtype = lValue; break;
-	case  60: Item->elemdmgamt = lValue; break;
-	case  61: Item->range = lValue; break;
-	case  62: Item->damage = lValue; break;
-	case  63: Item->color = lValue; break;
-	case  64: Item->prestige = lValue; break;
-	case  65: Item->unk006 = lValue; break;
-	case  66: Item->unk007 = lValue; break;
-	case  67: Item->unk008 = lValue; break;
-	case  68: Item->itemtype = lValue; break;
-	case  69: Item->material = lValue; break;
-	case  70: Item->materialunk1 = lValue; break;
-	case  71: Item->elitematerial = lValue; break;
-	case  72: Item->heroforge1 = lValue; break;
-	case  73: Item->heroforge2 = lValue; break;
-	case  74: Item->sellrate = lValue; break;
-	case  75: Item->extradmgskill = lValue; break;
-	case  76: Item->extradmgamt = lValue; break;
-	case  77: Item->charmfileid = lValue; break;
-	case  78: Item->factionmod1 = lValue; break;
-	case  79: Item->factionamt1 = lValue; break;
-	case  80: Item->factionmod2 = lValue; break;
-	case  81: Item->factionamt2 = lValue; break;
-	case  82: Item->factionmod3 = lValue; break;
-	case  83: Item->factionamt3 = lValue; break;
-	case  84: Item->factionmod4 = lValue; break;
-	case  85: Item->factionamt4 = lValue; break;
-	case  86: strcpy_s(Item->charmfile, cField); break;
-	case  87: Item->augtype = lValue; break;
-	case  88: Item->augstricthidden = lValue; break;
-	case  89: Item->augrestrict = lValue; break;
-	case  90: Item->augslot1type = lValue; break;
-	case  91: Item->augslot1visible = lValue; break;
-	case  92: Item->augslot1unk2 = lValue; break;
-	case  93: Item->augslot2type = lValue; break;
-	case  94: Item->augslot2visible = lValue; break;
-	case  95: Item->augslot2unk2 = lValue; break;
-	case  96: Item->augslot3type = lValue; break;
-	case  97: Item->augslot3visible = lValue; break;
-	case  98: Item->augslot3unk2 = lValue; break;
-	case  99: Item->augslot4type = lValue; break;
-	case 100: Item->augslot4visible = lValue; break;
-	case 101: Item->augslot4unk2 = lValue; break;
-	case 102: Item->augslot5type = lValue; break;
-	case 103: Item->augslot5visible = lValue; break;
-	case 104: Item->augslot5unk2 = lValue; break;
-	case 105: Item->augslot6type = lValue; break;
-	case 106: Item->augslot6visible = lValue; break;
-	case 107: Item->augslot6unk2 = lValue; break;
-	case 108: Item->pointtype = lValue; break;
-	case 109: Item->ldontheme = lValue; break;
-	case 110: Item->ldonprice = lValue; break;
-	case 111: Item->ldonsellbackrate = lValue; break;
-	case 112: Item->ldonsold = lValue; break;
-	case 113: Item->bagtype = lValue; break;
-	case 114: Item->bagslots = lValue; break;
-	case 115: Item->bagsize = lValue; break;
-	case 116: Item->bagwr = lValue; break;
-	case 117: Item->booktype = lValue; break;
-	case 118: Item->booklang = lValue; break;
-	case 119: strcpy_s(Item->filename, cField); break;
-	case 120: Item->loregroup = lValue; break;
-	case 121: Item->artifactflag = bValue; break;
-	case 122: Item->summoned = bValue; break;
-	case 123: Item->favor = lValue; break;
-	case 124: Item->fvnodrop = bValue; break;
-	case 125: Item->attack = lValue; break;
-	case 126: Item->haste = lValue; break;
-	case 127: Item->guildfavor = lValue; break;
-	case 128: Item->augdistiller = lValue; break;
-	case 129: Item->unk009 = lValue; break;
-	case 130: Item->unk010 = lValue; break;
-	case 131: Item->nopet = lValue; break;
-	case 132: Item->unk011 = lValue; break;
-		//case 133: Item->potionbelt = lValue; break;
-		//case 134: Item->potionbeltslots = lValue; break;
-	case 133: Item->stacksize = lValue; break;
-	case 134: Item->notransfer = bValue; break;
-	case 135: Item->expendablearrow = lValue; break;
-	case 136: Item->unk012 = lValue; break;
-	case 137: Item->unk013 = lValue; break;
-	case 138: Item->clickeffect = lValue; break;
-	case 139: Item->clicklevel2 = lValue; break;
-	case 140: Item->clicktype = lValue; break;
-	case 141: Item->clicklevel = lValue; break;
-	case 142: Item->clickmaxcharges = lValue; break;
-	case 143: Item->clickcasttime = lValue; break;
-	case 144: Item->clickrecastdelay = lValue; break;
-	case 145: Item->clickrecasttype = lValue; break;
-	case 146: Item->clickunk5 = lValue; break;
-	case 147: Item->clickname = lValue; break;
-	case 148: Item->clickunk7 = lValue; break;
-	case 149: Item->proceffect = lValue; break;
-	case 150: Item->proclevel2 = lValue; break;
-	case 151: Item->proctype = lValue; break;
-	case 152: Item->proclevel = lValue; break;
-	case 153: Item->procunk1 = lValue; break;
-	case 154: Item->procunk2 = lValue; break;
-	case 155: Item->procunk3 = lValue; break;
-	case 156: Item->procunk4 = lValue; break;
-	case 157: Item->procrate = lValue; break;
-	case 158: Item->procname = lValue; break;
-	case 159: Item->procunk7 = lValue; break;
-	case 160: Item->worneffect = lValue; break;
-	case 161: Item->wornlevel2 = lValue; break;
-	case 162: Item->worntype = lValue; break;
-	case 163: Item->wornlevel = lValue; break;
-	case 164: Item->wornunk1 = lValue; break;
-	case 165: Item->wornunk2 = lValue; break;
-	case 166: Item->wornunk3 = lValue; break;
-	case 167: Item->wornunk4 = lValue; break;
-	case 168: Item->wornunk5 = lValue; break;
-	case 169: Item->wornname = lValue; break;
-	case 170: Item->wornunk7 = lValue; break;
-	case 171: Item->focuseffect = lValue; break;
-	case 172: Item->focuslevel2 = lValue; break;
-	case 173: Item->focustype = lValue; break;
-	case 174: Item->focuslevel = lValue; break;
-	case 175: Item->focusunk1 = lValue; break;
-	case 176: Item->focusunk2 = lValue; break;
-	case 177: Item->focusunk3 = lValue; break;
-	case 178: Item->focusunk4 = lValue; break;
-	case 179: Item->focusunk5 = lValue; break;
-	case 180: Item->focusname = lValue; break;
-	case 181: Item->focusunk7 = lValue; break;
-	case 182: Item->scrolleffect = lValue; break;
-	case 183: Item->scrolllevel2 = lValue; break;
-	case 184: Item->scrolltype = lValue; break;
-	case 185: Item->scrolllevel = lValue; break;
-	case 186: Item->scrollunk1 = lValue; break;
-	case 187: Item->scrollunk2 = lValue; break;
-	case 188: Item->scrollunk3 = lValue; break;
-	case 189: Item->scrollunk4 = lValue; break;
-	case 190: Item->scrollunk5 = lValue; break;
-	case 191: Item->scrollname = lValue; break;
-	case 192: Item->scrollunk7 = lValue; break;
-	case 193: Item->bardeffect = lValue; break;
-	case 194: Item->bardlevel2 = lValue; break;
-	case 195: Item->bardeffecttype = lValue; break;
-	case 196: Item->bardlevel = lValue; break;
-	case 197: Item->bardunk1 = lValue; break;
-	case 198: Item->bardunk2 = lValue; break;
-	case 199: Item->bardunk3 = lValue; break;
-	case 200: Item->bardunk4 = lValue; break;
-	case 201: Item->bardunk5 = lValue; break;
-	case 202: Item->bardname = lValue; break;
-	case 203: Item->bardunk7 = lValue; break;
-	case 204: strcpy_s(Item->unk014, cField); break;
-	case 205: strcpy_s(Item->unk015, cField); break;
-	case 206: strcpy_s(Item->unk016, cField); break;
-	case 207: Item->unk017 = lValue; break;
-	case 208: Item->unk018 = lValue; break;
-	case 209: Item->unk019 = lValue; break;
-	case 210: Item->unk020 = lValue; break;
-	case 211: Item->unk021 = lValue; break;
-	case 212: Item->unk022 = lValue; break;
-	case 213: Item->scriptfile = lValue; break;
-	case 214: Item->questitemflag = bValue; break;
-	case 215: Item->powersourcecapacity = lValue; break;
-	case 216: Item->purity = lValue; break;
-	case 217: Item->epic = lValue; break;
-	case 218: Item->backstabdmg = lValue; break;
-	case 219: Item->heroic_str = lValue; break;
-	case 220: Item->heroic_int = lValue; break;
-	case 221: Item->heroic_wis = lValue; break;
-	case 222: Item->heroic_agi = lValue; break;
-	case 223: Item->heroic_dex = lValue; break;
-	case 224: Item->heroic_sta = lValue; break;
-	case 225: Item->heroic_cha = lValue; break;
-	case 226: Item->unk029 = lValue; break;
-	case 227: Item->healamt = lValue; break;
-	case 228: Item->spelldmg = lValue; break;
-	case 229: Item->clairvoyance = lValue; break;
-	case 230: Item->unk030 = lValue; break;
-	case 231: Item->unk031 = lValue; break;
-	case 232: Item->unk032 = lValue; break;
-	case 233: Item->unk033 = lValue; break;
-	case 234: Item->unk034 = lValue; break;
-	case 235: Item->unk035 = lValue; break;
-	case 236: Item->unk036 = lValue; break;
-	case 237: Item->unk037 = lValue; break;
-	case 238: Item->heirloom = bValue; break;
-	case 239: Item->placeable = lValue; break;
-	case 240: Item->unk038 = lValue; break;
-	case 241: Item->unk039 = lValue; break;
-	case 242: Item->unk040 = lValue; break;
-	case 243: Item->unk041 = static_cast<long>(dValue * 100); break;
-	case 244: Item->unk042 = static_cast<long>(dValue * 100); break;
-	case 245: Item->unk043 = lValue; break;
-	case 246: Item->unk044 = lValue; break;
-	case 247: strcpy_s(Item->placeablenpcname, cField); break;
-	case 248: Item->unk046 = lValue; break;
-	case 249: Item->unk047 = lValue; break;
-	case 250: Item->unk048 = lValue; break;
-	case 251: Item->unk049 = lValue; break;
-	case 252: Item->unk050 = static_cast<long>(dValue * 100); break;
-	case 253: Item->unk051 = lValue; break;
-	case 254: Item->unk052 = lValue; break;
-	case 255: Item->unk053 = lValue; break;
-	case 256: Item->unk054 = lValue; break;
-	case 257: Item->unk055 = lValue; break;
-	case 258: Item->unk056 = lValue; break;
-	case 259: Item->unk057 = lValue; break;
-	case 260: Item->unk058 = lValue; break;
-	case 261: Item->unk059 = lValue; break;
-	case 262: Item->unk060 = lValue; break;
-	case 263: Item->unk061 = lValue; break;
-	case 264: Item->unk062 = lValue; break;
-	case 265: strcpy_s(Item->unk063, cField); break;
-	case 266: Item->collectible = bValue; break;
-	case 267: Item->nodestroy = bValue; break;
-	case 268: Item->nonpc = bValue; break;
-	case 269: Item->nozone = bValue; break;
-	case 270: Item->unk068 = lValue; break;
-	case 271: Item->unk069 = lValue; break;
-	case 272: Item->unk070 = lValue; break;
-	case 273: Item->unk071 = lValue; break;
-	case 274: Item->noground = lValue; break;
-	case 275: Item->unk073 = lValue; break;
-	case 276: Item->marketplace = lValue; break;
-	case 277: Item->freestorage = lValue; break;
-	case 278: Item->unk076 = lValue; break;
-	case 279: Item->unk077 = lValue; break;
-	case 280: Item->unk078 = lValue; break;
-	case 281: Item->unk079 = lValue; break;
-	case 282: Item->evolving = bValue; break;
-	case 283: Item->evoid = lValue; break;
-	case 284: Item->evolvinglevel = lValue; break;
-	case 285: Item->evomax = lValue; break;
-	case 286: Item->convertable = lValue; break;
-	case 287: Item->convertid = lValue; break;
-	case 288: strcpy_s(Item->convertname, cField); break;
-
-	case 289: Item->updated = lValue; break;
-	case 290: Item->created = lValue; break;
-	case 291: strcpy_s(Item->submitter, cField); break;
-	case 292: Item->verified = lValue; break;
-	case 293: strcpy_s(Item->verifiedby, cField); break;
-	case 294: strcpy_s(Item->collectversion, cField); break;
-	}
-}
-
-static void SODEQReadItem(SODEQITEM* Item, char* szLine)
-{
-	char* ptr = szLine;
-	int iField = 0;
-
-	while (*ptr)
+	virtual bool IsValid() const override
 	{
-		char szField[256];
-		char* pDest = szField;
-		bool bEscape = false;
-
-		//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
-		while ((*ptr != '|' || bEscape) && *ptr != '\0')
-		{
-			if (bEscape) bEscape = !bEscape; else bEscape = *ptr == '\\';
-			if (bEscape) { ptr++; /*DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);*/ continue; }
-			*(pDest++) = *(ptr++);
-			//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
-		}
-		*pDest = '\0';
-		ptr++;
-
-		//WriteChatf("cField: %s", cField);
-		SODEQSetField(Item, iField++, szField);
+		return id != 0;
 	}
-}
 
-static std::string SODEQMakeLink(const SODEQITEM& Item, ItemPtr pItem)
-{
-	ItemDefinition* pItemDef = pItem->GetItemDefinition();
+	virtual void SetField(int iField, const char* cField) override
+	{
+		int lValue = atol(cField);
+		double dValue = atof(cField);
+		bool bValue = lValue > 0;
 
-	strcpy_s(pItemDef->Name, Item.name);
-	strcpy_s(pItemDef->LoreName, Item.lore);
-	pItemDef->ItemNumber = Item.id;
-	pItemDef->EquipSlots = Item.slots;
-	pItemDef->Cost = Item.price;
-	pItemDef->IconNumber = Item.icon;
-	pItemDef->Weight = Item.weight;
-	pItemDef->NoRent = Item.norent;
-	pItemDef->IsDroppable = Item.notransfer;
-	pItemDef->Attuneable = Item.attuneable;
-	pItemDef->Heirloom = Item.heirloom;
-	pItemDef->Collectible = Item.collectible;
-	pItemDef->NoDestroy = Item.nodestroy;
-	pItemDef->Size = static_cast<uint8_t>(Item.size);
-	pItemDef->Type = Item.itemclass;
-	pItemDef->TradeSkills = Item.tradeskills;
-	pItemDef->Lore = (Item.loregroup == 0 ? 0 : 1);
-	pItemDef->Artifact = Item.artifactflag;
-	pItemDef->Summoned = Item.summoned;
-	pItemDef->SvCold = static_cast<char>(Item.cr);
-	pItemDef->SvFire = static_cast<char>(Item.fr);
-	pItemDef->SvMagic = static_cast<char>(Item.mr);
-	pItemDef->SvDisease = static_cast<char>(Item.dr);
-	pItemDef->SvPoison = static_cast<char>(Item.pr);
-	pItemDef->SvCorruption = static_cast<char>(Item.svcorruption);
-	pItemDef->STR = static_cast<char>(Item.astr);
-	pItemDef->STA = static_cast<char>(Item.asta);
-	pItemDef->AGI = static_cast<char>(Item.aagi);
-	pItemDef->DEX = static_cast<char>(Item.adex);
-	pItemDef->CHA = static_cast<char>(Item.acha);
-	pItemDef->INT = static_cast<char>(Item.aint);
-	pItemDef->WIS = static_cast<char>(Item.awis);
-	pItemDef->HP = Item.hp;
-	pItemDef->Mana = Item.mana;
-	pItemDef->AC = Item.ac;
-	pItemDef->RequiredLevel = Item.reqlevel;
-	pItemDef->RecommendedLevel = Item.reclevel;
-	pItemDef->RecommendedSkill = Item.recskill;
-	pItemDef->SkillModType = Item.skillmodtype;
-	pItemDef->SkillModValue = Item.skillmodvalue;
-	pItemDef->SkillModMax = Item.skillmodmax;
-	pItemDef->SkillModBonus = Item.skillmodextra;
-	pItemDef->BaneDMGRace = Item.banedmgrace;
-	pItemDef->BaneDMGBodyType = Item.banedmgbody;
-	pItemDef->BaneDMGBodyTypeValue = Item.banedmgamt;
-	pItemDef->BaneDMGRaceValue = Item.banedmgraceamt;
-	pItemDef->InstrumentType = Item.bardtype;
-	pItemDef->InstrumentMod = Item.bardvalue;
-	pItemDef->Classes = Item.classes;
-	pItemDef->Races = Item.races;
-	pItemDef->Diety = Item.deity;
-	pItemDef->Magic = Item.magic;
-	pItemDef->Light = static_cast<uint8_t>(Item.light);
-	pItemDef->Delay = static_cast<uint8_t>(Item.delay);
-	pItemDef->ElementalFlag = static_cast<uint8_t>(Item.elemdmgtype);
-	pItemDef->ElementalDamage = static_cast<uint8_t>(Item.elemdmgamt);
-	pItemDef->Range = static_cast<uint8_t>(Item.range);
-	pItemDef->Damage = Item.damage;
-	pItemDef->BackstabDamage = Item.backstabdmg;
-	pItemDef->HeroicSTR = Item.heroic_str;
-	pItemDef->HeroicINT = Item.heroic_int;
-	pItemDef->HeroicWIS = Item.heroic_wis;
-	pItemDef->HeroicAGI = Item.heroic_agi;
-	pItemDef->HeroicDEX = Item.heroic_dex;
-	pItemDef->HeroicSTA = Item.heroic_sta;
-	pItemDef->HeroicCHA = Item.heroic_cha;
-	pItemDef->HealAmount = Item.healamt;
-	pItemDef->SpellDamage = Item.spelldmg;
-	pItemDef->Prestige = Item.prestige;
-	pItemDef->ItemClass = static_cast<uint8_t>(Item.itemtype);
-	pItemDef->ArmorProps.material = Item.material;
-	pItemDef->AugData.Sockets[0].Type = Item.augslot1type;
-	pItemDef->AugData.Sockets[0].bVisible = Item.augslot1unk2;
-	pItemDef->AugData.Sockets[1].Type = Item.augslot2type;
-	pItemDef->AugData.Sockets[1].bVisible = Item.augslot2unk2;
-	pItemDef->AugData.Sockets[2].Type = Item.augslot3type;
-	pItemDef->AugData.Sockets[2].bVisible = Item.augslot3unk2;
-	pItemDef->AugData.Sockets[3].Type = Item.augslot4type;
-	pItemDef->AugData.Sockets[3].bVisible = Item.augslot4unk2;
-	pItemDef->AugData.Sockets[4].Type = Item.augslot5type;
-	pItemDef->AugData.Sockets[4].bVisible = Item.augslot5unk2;
-	pItemDef->AugData.Sockets[5].Type = Item.augslot6type;
-	pItemDef->AugData.Sockets[5].bVisible = Item.augslot6unk2;
-	pItemDef->AugType = Item.augtype;
-	pItemDef->AugRestrictions = Item.augrestrict;
-	pItemDef->SolventItemID = Item.augdistiller;
-	pItemDef->LDTheme = Item.ldontheme;
-	pItemDef->LDCost = Item.ldonprice;
-	strcpy_s(pItemDef->CharmFile, Item.charmfile);
-	pItemDef->DmgBonusSkill = Item.extradmgskill;
-	pItemDef->DmgBonusValue = Item.extradmgamt;
-	pItemDef->CharmFileID = Item.charmfileid;
-	pItemDef->FoodDuration = Item.foodduration;
-	pItemDef->ContainerType = static_cast<uint8_t>(Item.bagtype);
-	pItemDef->Slots = static_cast<uint8_t>(Item.bagslots);
-	pItemDef->SizeCapacity = static_cast<uint8_t>(Item.bagsize);
-	pItemDef->WeightReduction = static_cast<uint8_t>(Item.bagwr);
-	pItemDef->BookType = static_cast<uint8_t>(Item.booktype);
-	pItemDef->BookLang = static_cast<int8_t>(Item.booklang);
-	strcpy_s(pItemDef->BookFile, Item.filename);
-	pItemDef->Favor = Item.favor;
-	pItemDef->GuildFavor = Item.guildfavor;
-	pItemDef->bIsFVNoDrop = Item.fvnodrop;
-	pItemDef->Endurance = Item.endur;
-	pItemDef->Attack = Item.attack;
-	pItemDef->HPRegen = Item.regen;
-	pItemDef->ManaRegen = Item.manaregen;
-	pItemDef->EnduranceRegen = Item.enduranceregen;
-	pItemDef->Haste = Item.haste;
-	pItemDef->bNoPetGive = Item.nopet;
-	pItemDef->StackSize = Item.stacksize;
-	pItemDef->MaxPower = Item.powersourcecapacity;
-	pItemDef->Purity = Item.purity;
-	pItemDef->QuestItem = Item.questitemflag;
-	pItemDef->Expendable = Item.expendablearrow;
-	pItemDef->Clairvoyance = Item.clairvoyance;
-	pItemDef->Placeable = Item.placeable;
+		switch (iField) {
+		case   0: itemclass = lValue; break;
+		case   1: strcpy_s(name, cField); break;
+		case   2: strcpy_s(lore, cField); break;
+		case   3: strcpy_s(idfile, cField); break;
+		case   4: strcpy_s(lorefile, cField); break;
+		case   5: id = lValue; break;
+		case   6: weight = lValue; break;
+		case   7: norent = bValue; break;
+		case   8: nodrop = bValue; break;
+		case   9: attuneable = bValue; break;
+		case  10: size = lValue; break;
+		case  11: slots = lValue; break;
+		case  12: price = lValue; break;
+		case  13: icon = lValue; break;
+		case  14: benefitflag = lValue; break;
+		case  15: tradeskills = bValue; break;
+		case  16: cr = lValue; break;
+		case  17: dr = lValue; break;
+		case  18: pr = lValue; break;
+		case  19: mr = lValue; break;
+		case  20: fr = lValue; break;
+		case  21: svcorruption = lValue; break;
+		case  22: astr = lValue; break;
+		case  23: asta = lValue; break;
+		case  24: aagi = lValue; break;
+		case  25: adex = lValue; break;
+		case  26: acha = lValue; break;
+		case  27: aint = lValue; break;
+		case  28: awis = lValue; break;
+		case  29: hp = lValue; break;
+		case  30: mana = lValue; break;
+		case  31: endur = lValue; break;
+		case  32: ac = lValue; break;
+		case  33: regen = lValue; break;
+		case  34: manaregen = lValue; break;
+		case  35: enduranceregen = lValue; break;
+		case  36: classes = lValue; break;
+		case  37: races = lValue; break;
+		case  38: deity = lValue; break;
+		case  39: skillmodvalue = lValue; break;
+		case  40: skillmodmax = lValue; break;
+		case  41: skillmodtype = lValue; break;
+		case  42: skillmodextra = lValue; break;
+		case  43: banedmgrace = lValue; break;
+		case  44: banedmgbody = lValue; break;
+		case  45: banedmgraceamt = lValue; break;
+		case  46: banedmgamt = lValue; break;
+		case  47: magic = lValue; break;
+		case  48: foodduration = lValue; break;
+		case  49: reqlevel = lValue; break;
+		case  50: reclevel = lValue; break;
+		case  51: recskill = lValue; break;
+		case  52: bardtype = lValue; break;
+		case  53: bardvalue = lValue; break;
+		case  54: unk002 = lValue; break;
+		case  55: unk003 = lValue; break;
+		case  56: unk004 = lValue; break;
+		case  57: light = lValue; break;
+		case  58: delay = lValue; break;
+		case  59: elemdmgtype = lValue; break;
+		case  60: elemdmgamt = lValue; break;
+		case  61: range = lValue; break;
+		case  62: damage = lValue; break;
+		case  63: color = lValue; break;
+		case  64: prestige = lValue; break;
+		case  65: unk006 = lValue; break;
+		case  66: unk007 = lValue; break;
+		case  67: unk008 = lValue; break;
+		case  68: itemtype = lValue; break;
+		case  69: material = lValue; break;
+		case  70: materialunk1 = lValue; break;
+		case  71: elitematerial = lValue; break;
+		case  72: heroforge1 = lValue; break;
+		case  73: heroforge2 = lValue; break;
+		case  74: sellrate = lValue; break;
+		case  75: extradmgskill = lValue; break;
+		case  76: extradmgamt = lValue; break;
+		case  77: charmfileid = lValue; break;
+		case  78: factionmod1 = lValue; break;
+		case  79: factionamt1 = lValue; break;
+		case  80: factionmod2 = lValue; break;
+		case  81: factionamt2 = lValue; break;
+		case  82: factionmod3 = lValue; break;
+		case  83: factionamt3 = lValue; break;
+		case  84: factionmod4 = lValue; break;
+		case  85: factionamt4 = lValue; break;
+		case  86: strcpy_s(charmfile, cField); break;
+		case  87: augtype = lValue; break;
+		case  88: augstricthidden = lValue; break;
+		case  89: augrestrict = lValue; break;
+		case  90: augslot1type = lValue; break;
+		case  91: augslot1visible = lValue; break;
+		case  92: augslot1unk2 = lValue; break;
+		case  93: augslot2type = lValue; break;
+		case  94: augslot2visible = lValue; break;
+		case  95: augslot2unk2 = lValue; break;
+		case  96: augslot3type = lValue; break;
+		case  97: augslot3visible = lValue; break;
+		case  98: augslot3unk2 = lValue; break;
+		case  99: augslot4type = lValue; break;
+		case 100: augslot4visible = lValue; break;
+		case 101: augslot4unk2 = lValue; break;
+		case 102: augslot5type = lValue; break;
+		case 103: augslot5visible = lValue; break;
+		case 104: augslot5unk2 = lValue; break;
+		case 105: augslot6type = lValue; break;
+		case 106: augslot6visible = lValue; break;
+		case 107: augslot6unk2 = lValue; break;
+		case 108: pointtype = lValue; break;
+		case 109: ldontheme = lValue; break;
+		case 110: ldonprice = lValue; break;
+		case 111: ldonsellbackrate = lValue; break;
+		case 112: ldonsold = lValue; break;
+		case 113: bagtype = lValue; break;
+		case 114: bagslots = lValue; break;
+		case 115: bagsize = lValue; break;
+		case 116: bagwr = lValue; break;
+		case 117: booktype = lValue; break;
+		case 118: booklang = lValue; break;
+		case 119: strcpy_s(filename, cField); break;
+		case 120: loregroup = lValue; break;
+		case 121: artifactflag = bValue; break;
+		case 122: summoned = bValue; break;
+		case 123: favor = lValue; break;
+		case 124: fvnodrop = bValue; break;
+		case 125: attack = lValue; break;
+		case 126: haste = lValue; break;
+		case 127: guildfavor = lValue; break;
+		case 128: augdistiller = lValue; break;
+		case 129: unk009 = lValue; break;
+		case 130: unk010 = lValue; break;
+		case 131: nopet = lValue; break;
+		case 132: unk011 = lValue; break;
+		case 133: stacksize = lValue; break;
+		case 134: notransfer = bValue; break;
+		case 135: expendablearrow = lValue; break;
+		case 136: unk012 = lValue; break;
+		case 137: unk013 = lValue; break;
+		case 138: clickeffect = lValue; break;
+		case 139: clicklevel2 = lValue; break;
+		case 140: clicktype = lValue; break;
+		case 141: clicklevel = lValue; break;
+		case 142: clickmaxcharges = lValue; break;
+		case 143: clickcasttime = lValue; break;
+		case 144: clickrecastdelay = lValue; break;
+		case 145: clickrecasttype = lValue; break;
+		case 146: clickunk5 = lValue; break;
+		case 147: clickname = lValue; break;
+		case 148: clickunk7 = lValue; break;
+		case 149: proceffect = lValue; break;
+		case 150: proclevel2 = lValue; break;
+		case 151: proctype = lValue; break;
+		case 152: proclevel = lValue; break;
+		case 153: procunk1 = lValue; break;
+		case 154: procunk2 = lValue; break;
+		case 155: procunk3 = lValue; break;
+		case 156: procunk4 = lValue; break;
+		case 157: procrate = lValue; break;
+		case 158: procname = lValue; break;
+		case 159: procunk7 = lValue; break;
+		case 160: worneffect = lValue; break;
+		case 161: wornlevel2 = lValue; break;
+		case 162: worntype = lValue; break;
+		case 163: wornlevel = lValue; break;
+		case 164: wornunk1 = lValue; break;
+		case 165: wornunk2 = lValue; break;
+		case 166: wornunk3 = lValue; break;
+		case 167: wornunk4 = lValue; break;
+		case 168: wornunk5 = lValue; break;
+		case 169: wornname = lValue; break;
+		case 170: wornunk7 = lValue; break;
+		case 171: focuseffect = lValue; break;
+		case 172: focuslevel2 = lValue; break;
+		case 173: focustype = lValue; break;
+		case 174: focuslevel = lValue; break;
+		case 175: focusunk1 = lValue; break;
+		case 176: focusunk2 = lValue; break;
+		case 177: focusunk3 = lValue; break;
+		case 178: focusunk4 = lValue; break;
+		case 179: focusunk5 = lValue; break;
+		case 180: focusname = lValue; break;
+		case 181: focusunk7 = lValue; break;
+		case 182: scrolleffect = lValue; break;
+		case 183: scrolllevel2 = lValue; break;
+		case 184: scrolltype = lValue; break;
+		case 185: scrolllevel = lValue; break;
+		case 186: scrollunk1 = lValue; break;
+		case 187: scrollunk2 = lValue; break;
+		case 188: scrollunk3 = lValue; break;
+		case 189: scrollunk4 = lValue; break;
+		case 190: scrollunk5 = lValue; break;
+		case 191: scrollname = lValue; break;
+		case 192: scrollunk7 = lValue; break;
+		case 193: bardeffect = lValue; break;
+		case 194: bardlevel2 = lValue; break;
+		case 195: bardeffecttype = lValue; break;
+		case 196: bardlevel = lValue; break;
+		case 197: bardunk1 = lValue; break;
+		case 198: bardunk2 = lValue; break;
+		case 199: bardunk3 = lValue; break;
+		case 200: bardunk4 = lValue; break;
+		case 201: bardunk5 = lValue; break;
+		case 202: bardname = lValue; break;
+		case 203: bardunk7 = lValue; break;
+		case 204: strcpy_s(unk014, cField); break;
+		case 205: strcpy_s(unk015, cField); break;
+		case 206: strcpy_s(unk016, cField); break;
+		case 207: unk017 = lValue; break;
+		case 208: unk018 = lValue; break;
+		case 209: unk019 = lValue; break;
+		case 210: unk020 = lValue; break;
+		case 211: unk021 = lValue; break;
+		case 212: unk022 = lValue; break;
+		case 213: scriptfile = lValue; break;
+		case 214: questitemflag = bValue; break;
+		case 215: powersourcecapacity = lValue; break;
+		case 216: purity = lValue; break;
+		case 217: epic = lValue; break;
+		case 218: backstabdmg = lValue; break;
+		case 219: heroic_str = lValue; break;
+		case 220: heroic_int = lValue; break;
+		case 221: heroic_wis = lValue; break;
+		case 222: heroic_agi = lValue; break;
+		case 223: heroic_dex = lValue; break;
+		case 224: heroic_sta = lValue; break;
+		case 225: heroic_cha = lValue; break;
+		case 226: unk029 = lValue; break;
+		case 227: healamt = lValue; break;
+		case 228: spelldmg = lValue; break;
+		case 229: clairvoyance = lValue; break;
+		case 230: unk030 = lValue; break;
+		case 231: unk031 = lValue; break;
+		case 232: unk032 = lValue; break;
+		case 233: unk033 = lValue; break;
+		case 234: unk034 = lValue; break;
+		case 235: unk035 = lValue; break;
+		case 236: unk036 = lValue; break;
+		case 237: unk037 = lValue; break;
+		case 238: heirloom = bValue; break;
+		case 239: placeable = lValue; break;
+		case 240: unk038 = lValue; break;
+		case 241: unk039 = lValue; break;
+		case 242: unk040 = lValue; break;
+		case 243: unk041 = static_cast<long>(dValue * 100); break;
+		case 244: unk042 = static_cast<long>(dValue * 100); break;
+		case 245: unk043 = lValue; break;
+		case 246: unk044 = lValue; break;
+		case 247: strcpy_s(placeablenpcname, cField); break;
+		case 248: unk046 = lValue; break;
+		case 249: unk047 = lValue; break;
+		case 250: unk048 = lValue; break;
+		case 251: unk049 = lValue; break;
+		case 252: unk050 = static_cast<long>(dValue * 100); break;
+		case 253: unk051 = lValue; break;
+		case 254: unk052 = lValue; break;
+		case 255: unk053 = lValue; break;
+		case 256: unk054 = lValue; break;
+		case 257: unk055 = lValue; break;
+		case 258: unk056 = lValue; break;
+		case 259: unk057 = lValue; break;
+		case 260: unk058 = lValue; break;
+		case 261: unk059 = lValue; break;
+		case 262: unk060 = lValue; break;
+		case 263: unk061 = lValue; break;
+		case 264: unk062 = lValue; break;
+		case 265: strcpy_s(unk063, cField); break;
+		case 266: collectible = bValue; break;
+		case 267: nodestroy = bValue; break;
+		case 268: nonpc = bValue; break;
+		case 269: nozone = bValue; break;
+		case 270: unk068 = lValue; break;
+		case 271: unk069 = lValue; break;
+		case 272: unk070 = lValue; break;
+		case 273: unk071 = lValue; break;
+		case 274: noground = lValue; break;
+		case 275: unk073 = lValue; break;
+		case 276: marketplace = lValue; break;
+		case 277: freestorage = lValue; break;
+		case 278: unk076 = lValue; break;
+		case 279: unk077 = lValue; break;
+		case 280: unk078 = lValue; break;
+		case 281: unk079 = lValue; break;
+		case 282: evolving = bValue; break;
+		case 283: evoid = lValue; break;
+		case 284: evolvinglevel = lValue; break;
+		case 285: evomax = lValue; break;
+		case 286: convertable = lValue; break;
+		case 287: convertid = lValue; break;
+		case 288: strcpy_s(convertname, cField); break;
+		case 289: updated = lValue; break;
+		case 290: created = lValue; break;
+		case 291: strcpy_s(submitter, cField); break;
+		case 292: verified = lValue; break;
+		case 293: strcpy_s(verifiedby, cField); break;
+		case 294: strcpy_s(collectversion, cField); break;
+		}
+	}
+
+	virtual void PopulateItem(ItemPtr pItem) const override
+	{
+		ItemDefinition* pItemDef = pItem->GetItemDefinition();
+
+		strcpy_s(pItemDef->Name, name);
+		strcpy_s(pItemDef->LoreName, lore);
+		pItemDef->ItemNumber = id;
+		pItemDef->EquipSlots = slots;
+		pItemDef->Cost = price;
+		pItemDef->IconNumber = icon;
+		pItemDef->Weight = weight;
+		pItemDef->NoRent = norent;
+		pItemDef->IsDroppable = notransfer;
+		pItemDef->Attuneable = attuneable;
+		pItemDef->Heirloom = heirloom;
+		pItemDef->Collectible = collectible;
+		pItemDef->NoDestroy = nodestroy;
+		pItemDef->Size = static_cast<uint8_t>(size);
+		pItemDef->Type = itemclass;
+		pItemDef->TradeSkills = tradeskills;
+		pItemDef->Lore = (loregroup == 0 ? 0 : 1);
+		pItemDef->Artifact = artifactflag;
+		pItemDef->Summoned = summoned;
+		pItemDef->SvCold = static_cast<char>(cr);
+		pItemDef->SvFire = static_cast<char>(fr);
+		pItemDef->SvMagic = static_cast<char>(mr);
+		pItemDef->SvDisease = static_cast<char>(dr);
+		pItemDef->SvPoison = static_cast<char>(pr);
+		pItemDef->SvCorruption = static_cast<char>(svcorruption);
+		pItemDef->STR = static_cast<char>(astr);
+		pItemDef->STA = static_cast<char>(asta);
+		pItemDef->AGI = static_cast<char>(aagi);
+		pItemDef->DEX = static_cast<char>(adex);
+		pItemDef->CHA = static_cast<char>(acha);
+		pItemDef->INT = static_cast<char>(aint);
+		pItemDef->WIS = static_cast<char>(awis);
+		pItemDef->HP = hp;
+		pItemDef->Mana = mana;
+		pItemDef->AC = ac;
+		pItemDef->RequiredLevel = reqlevel;
+		pItemDef->RecommendedLevel = reclevel;
+		pItemDef->RecommendedSkill = recskill;
+		pItemDef->SkillModType = skillmodtype;
+		pItemDef->SkillModValue = skillmodvalue;
+		pItemDef->SkillModMax = skillmodmax;
+		pItemDef->SkillModBonus = skillmodextra;
+		pItemDef->BaneDMGRace = banedmgrace;
+		pItemDef->BaneDMGBodyType = banedmgbody;
+		pItemDef->BaneDMGBodyTypeValue = banedmgamt;
+		pItemDef->BaneDMGRaceValue = banedmgraceamt;
+		pItemDef->InstrumentType = bardtype;
+		pItemDef->InstrumentMod = bardvalue;
+		pItemDef->Classes = classes;
+		pItemDef->Races = races;
+		pItemDef->Diety = deity;
+		pItemDef->Magic = magic;
+		pItemDef->Light = static_cast<uint8_t>(light);
+		pItemDef->Delay = static_cast<uint8_t>(delay);
+		pItemDef->ElementalFlag = static_cast<uint8_t>(elemdmgtype);
+		pItemDef->ElementalDamage = static_cast<uint8_t>(elemdmgamt);
+		pItemDef->Range = static_cast<uint8_t>(range);
+		pItemDef->Damage = damage;
+		pItemDef->BackstabDamage = backstabdmg;
+		pItemDef->HeroicSTR = heroic_str;
+		pItemDef->HeroicINT = heroic_int;
+		pItemDef->HeroicWIS = heroic_wis;
+		pItemDef->HeroicAGI = heroic_agi;
+		pItemDef->HeroicDEX = heroic_dex;
+		pItemDef->HeroicSTA = heroic_sta;
+		pItemDef->HeroicCHA = heroic_cha;
+		pItemDef->HealAmount = healamt;
+		pItemDef->SpellDamage = spelldmg;
+		pItemDef->Prestige = prestige;
+		pItemDef->ItemClass = static_cast<uint8_t>(itemtype);
+		pItemDef->ArmorProps.material = material;
+		pItemDef->AugData.Sockets[0].Type = augslot1type;
+		pItemDef->AugData.Sockets[0].bVisible = augslot1unk2;
+		pItemDef->AugData.Sockets[1].Type = augslot2type;
+		pItemDef->AugData.Sockets[1].bVisible = augslot2unk2;
+		pItemDef->AugData.Sockets[2].Type = augslot3type;
+		pItemDef->AugData.Sockets[2].bVisible = augslot3unk2;
+		pItemDef->AugData.Sockets[3].Type = augslot4type;
+		pItemDef->AugData.Sockets[3].bVisible = augslot4unk2;
+		pItemDef->AugData.Sockets[4].Type = augslot5type;
+		pItemDef->AugData.Sockets[4].bVisible = augslot5unk2;
+		pItemDef->AugData.Sockets[5].Type = augslot6type;
+		pItemDef->AugData.Sockets[5].bVisible = augslot6unk2;
+		pItemDef->AugType = augtype;
+		pItemDef->AugRestrictions = augrestrict;
+		pItemDef->SolventItemID = augdistiller;
+		pItemDef->LDTheme = ldontheme;
+		pItemDef->LDCost = ldonprice;
+		strcpy_s(pItemDef->CharmFile, charmfile);
+		pItemDef->DmgBonusSkill = extradmgskill;
+		pItemDef->DmgBonusValue = extradmgamt;
+		pItemDef->CharmFileID = charmfileid;
+		pItemDef->FoodDuration = foodduration;
+		pItemDef->ContainerType = static_cast<uint8_t>(bagtype);
+		pItemDef->Slots = static_cast<uint8_t>(bagslots);
+		pItemDef->SizeCapacity = static_cast<uint8_t>(bagsize);
+		pItemDef->WeightReduction = static_cast<uint8_t>(bagwr);
+		pItemDef->BookType = static_cast<uint8_t>(booktype);
+		pItemDef->BookLang = static_cast<int8_t>(booklang);
+		strcpy_s(pItemDef->BookFile, filename);
+		pItemDef->Favor = favor;
+		pItemDef->GuildFavor = guildfavor;
+		pItemDef->bIsFVNoDrop = fvnodrop;
+		pItemDef->Endurance = endur;
+		pItemDef->Attack = attack;
+		pItemDef->HPRegen = regen;
+		pItemDef->ManaRegen = manaregen;
+		pItemDef->EnduranceRegen = enduranceregen;
+		pItemDef->Haste = haste;
+		pItemDef->bNoPetGive = nopet;
+		pItemDef->StackSize = stacksize;
+		pItemDef->MaxPower = powersourcecapacity;
+		pItemDef->Purity = purity;
+		pItemDef->QuestItem = questitemflag;
+		pItemDef->Expendable = expendablearrow;
+		pItemDef->Clairvoyance = clairvoyance;
+		pItemDef->Placeable = placeable;
 #if defined(ROF2EMU) || defined(UFEMU)
-	pItemDef->FactionModType[0] = Item.factionmod1;
-	pItemDef->FactionModType[1] = Item.factionmod2;
-	pItemDef->FactionModType[2] = Item.factionmod3;
-	pItemDef->FactionModType[3] = Item.factionmod4;
-	pItemDef->FactionModValue[0] = Item.factionamt1;
-	pItemDef->FactionModValue[1] = Item.factionamt2;
-	pItemDef->FactionModValue[2] = Item.factionamt3;
-	pItemDef->FactionModValue[3] = Item.factionamt4;
-	strcpy_s(pItemDef->IDFile, Item.idfile);
+		pItemDef->FactionModType[0] = factionmod1;
+		pItemDef->FactionModType[1] = factionmod2;
+		pItemDef->FactionModType[2] = factionmod3;
+		pItemDef->FactionModType[3] = factionmod4;
+		pItemDef->FactionModValue[0] = factionamt1;
+		pItemDef->FactionModValue[1] = factionamt2;
+		pItemDef->FactionModValue[2] = factionamt3;
+		pItemDef->FactionModValue[3] = factionamt4;
+		strcpy_s(pItemDef->IDFile, idfile);
 #else
-	pItemDef->bNoNPC = Item.nonpc;
-	pItemDef->LoreEquipped = 1;
+		pItemDef->bNoNPC = nonpc;
+		pItemDef->LoreEquipped = 1;
 #endif
 
-	bool IsEvolvingItem = Item.evoid > 0 && Item.evoid < 10000;
-	if (IsEvolvingItem)
-	{
-		pItem->pEvolutionData = SoeUtil::MakeShared<ItemEvolutionData>();
-		pItem->pEvolutionData->EvolvingMaxLevel = Item.evomax;
-		pItem->pEvolutionData->EvolvingExpPct = 0;
-		pItem->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? Item.evolvinglevel : 0);
-		pItem->pEvolutionData->GroupID = (IsEvolvingItem ? Item.evoid : (Item.loregroup > 0) ? Item.loregroup & 0xFFFF : 0);
-		pItem->pEvolutionData->LastEquipped = 0;
+		bool IsEvolvingItem = evoid > 0 && evoid < 10000;
+		if (IsEvolvingItem)
+		{
+			pItem->pEvolutionData = SoeUtil::MakeShared<ItemEvolutionData>();
+			pItem->pEvolutionData->EvolvingMaxLevel = evomax;
+			pItem->pEvolutionData->EvolvingExpPct = 0;
+			pItem->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? evolvinglevel : 0);
+			pItem->pEvolutionData->GroupID = (IsEvolvingItem ? evoid : (loregroup > 0) ? loregroup & 0xFFFF : 0);
+			pItem->pEvolutionData->LastEquipped = 0;
+		}
+		else
+		{
+			pItem->pEvolutionData.reset();
+		}
 	}
-	else
+};
+
+#pragma endregion
+
+class SODEQItemConverter315 : public SODEQItemConverter295
+{
+public:
+	SODEQItemConverter315()
+	{}
+
+	~SODEQItemConverter315()
+	{}
+
+	// new/changed fields since previous format
+	int idfileextra;                      // 4   lorefile -> idfileextra
+	int mounteffect;                      // 78  factionmod1 -> mounteffect
+	int mountlevel2;                      // 79  factionamt1 -> mountlevel2
+	int mounteffecttype;                  // 80  factionmod2 -> mounteffecttype
+	int mountlevel;                       // 81  factionamt2 -> mountlevel
+	int mountunk1;                        // 82  factionmod3 -> mountunk1
+	int mountunk2;                        // 83  factionamt3 -> mountunk2
+	int mountunk3;                        // 84  factionmod4 -> mountunk3
+	int mountunk4;                        // 85  factionamt4 -> mountunk4
+	int mountunk5;                        // 204 UNKNOWN14 -> mountunk5
+	char mountname[0x40];                 // 207 UNKNOWN17 -> mountname
+	int mountunk7;                        // 208 UNKNOWN18 -> mountunk7
+	int blessinglevel2;                   // 209 UNKNOWN19 -> blessinglevel2
+	int blessingeffecttype;               // 210 UNKNOWN20 -> blessingeffecttype
+	int blessinglevel;                    // 211 UNKNOWN21 -> blessinglevel
+	int blessingunk1;                     // 212 UNKNOWN22 -> blessingunk1
+	int blessingunk2;                     // 282 blessingunk2
+	int blessingunk3;                     // 283 blessingunk3
+	int blessingunk4;                     // 284 blessingunk4
+	int blessingunk5;                     // 285 blessingunk5
+	int blessingunk7;                     // 286 blessingunk7
+	int familiareffect;                   // 287 familiareffect
+	int familiarlevel2;                   // 288 familiarlevel2
+	int familiareffecttype;               // 289 familiareffecttype
+	int familiarlevel;                    // 290 familiarlevel
+	int familiarunk1;                     // 291 familiarunk1
+	int familiarunk2;                     // 292 familiarunk2
+	int familiarunk3;                     // 293 familiarunk3
+	int familiarunk4;                     // 294 familiarunk4
+	int familiarunk5;                     // 295 familiarunk5
+	char familiarname[0x40];              // 296 familiarname
+	int familiarunk7;                     // 297 familiarunk7
+	int unk80;                            // 298 UNKNOWN80
+	int minluck;                          // 299 minluck
+	int maxluck;                          // 300 maxluck
+	char loreequippedgroup[0x40];         // 301 loreequippedgroup
+
+	virtual void SetField(int iField, const char* cField) override
 	{
-		pItem->pEvolutionData.reset();
+		int lValue = atol(cField);
+		double dValue = atof(cField);
+		bool bValue = lValue > 0;
+
+		switch (iField)
+		{
+		case 4: idfileextra = lValue; break;
+		case 78: mounteffect = lValue; break;
+		case 79: mountlevel2 = lValue; break;
+		case 80: mounteffecttype = lValue; break;
+		case 81: mountlevel = lValue; break;
+		case 82: mountunk1 = lValue; break;
+		case 83: mountunk2 = lValue; break;
+		case 84: mountunk3 = lValue; break;
+		case 85: mountunk4 = lValue; break;
+		case 204: mountunk5 = lValue; break;
+		case 207: strcpy_s(mountname, cField); break;
+		case 208: mountunk7 = lValue; break;
+		case 209: blessinglevel2 = lValue; break;
+		case 210: blessingeffecttype = lValue; break;
+		case 211: blessinglevel = lValue; break;
+		case 212: blessingunk1 = lValue; break;
+		case 282: blessingunk2 = lValue; break;
+		case 283: blessingunk3 = lValue; break;
+		case 284: blessingunk4 = lValue; break;
+		case 285: blessingunk5 = lValue; break;
+		case 286: blessingunk7 = lValue; break;
+		case 287: familiareffect = lValue; break;
+		case 288: familiarlevel2 = lValue; break;
+		case 289: familiareffecttype = lValue; break;
+		case 290: familiarlevel = lValue; break;
+		case 291: familiarunk1 = lValue; break;
+		case 292: familiarunk2 = lValue; break;
+		case 293: familiarunk3 = lValue; break;
+		case 294: familiarunk4 = lValue; break;
+		case 295: familiarunk5 = lValue; break;
+		case 296: strcpy_s(familiarname, cField); break;
+		case 297: familiarunk7 = lValue; break;
+		case 298: unk80 = lValue; break;
+		case 299: minluck = lValue; break;
+		case 300: maxluck = lValue; break;
+		case 301: strcpy_s(loreequippedgroup, cField); break;
+		default:
+			// 302 -> 282 (-20)
+			if (iField < 282)
+				SODEQItemConverter295::SetField(iField, cField);
+			else if (iField >= 302)
+				SODEQItemConverter295::SetField(iField - 20, cField);
+			break;
+		}
 	}
 
-	char link[MAX_STRING] = { 0 };
-	GetItemLink(pItem, link);
-	return std::string(link);
+	virtual void PopulateItem(ItemPtr pItem) const override
+	{
+		SODEQItemConverter295::PopulateItem(pItem);
+
+		ItemDefinition* pItemDef = pItem->GetItemDefinition();
+
+		pItemDef->IDFile2 = idfileextra;
+		pItemDef->MinLuck = minluck;
+		pItemDef->MaxLuck = maxluck;
+	}
+};
+
+std::unique_ptr<SODEQItemConverter> MakeItemConverter(const char* szLine)
+{
+	// quick sanity check on file
+	int columnCount = strcnt(szLine, '|') + 1;
+
+	if (columnCount == 295)
+		return std::make_unique<SODEQItemConverter295>();
+
+	if (columnCount == 315)
+		return std::make_unique<SODEQItemConverter315>();
+
+	return nullptr;
 }
 
 static void ConvertItemsDotTxt()
@@ -1919,78 +1841,66 @@ static void ConvertItemsDotTxt()
 	sprintf_s(szFilename, "%s\\items.txt", gPathResources);
 	FILE* File = nullptr;
 	errno_t err = fopen_s(&File, szFilename, "rt");
-	if (!err)
-	{
-		FILE* LinkFile = nullptr;
-		err = fopen_s(&LinkFile, szLinkDBFileName, "wt");
-
-		if (!err)
-		{
-			// reset this so we read it in next time.
-			presentItemIDs.clear();
-			bKnowTotal = false;
-
-			WriteChatf("MQ2LinkDB: Generating links...");
-			char szLine[MAX_STRING * 2] = { 0 };
-			SODEQITEM SODEQItem;
-
-			bool bFirst = true;
-			int iCount = 0;
-
-			// Set up our reusable item to fill with data for linking.
-			ItemDefinitionPtr pItemDef = SoeUtil::MakeShared<ItemDefinition>();
-			ItemPtr pItem = eqNew<ItemClient>();
-			pItem->SetItemDefinition(pItemDef.get());
-
-			while (fgets(szLine, MAX_STRING * 2, File) != nullptr)
-			{
-				szLine[strlen(szLine) - 1] = '\0';
-
-				if (bFirst)
-				{
-					// quick sanity check on file
-					int nCheck = strcnt(szLine, '|');
-					if (nCheck != 294)
-					{
-						WriteChatf("MQ2LinkDB: \arInvalid items.txt file. \ay%d\ax fields found. Aborting", nCheck);
-						break;
-					}
-
-					bFirst = false;
-				}
-				else
-				{
-					memset(&SODEQItem, 0, sizeof(SODEQItem));
-					SODEQReadItem(&SODEQItem, szLine);
-
-					if (SODEQItem.id)
-					{
-						std::string sLink = SODEQMakeLink(SODEQItem, pItem);
-
-						//WriteChatf("Test ItemID[%d]: %d", SODEQItem.id, ItemID(cLink));
-
-						fprintf(LinkFile, "%s\n", sLink.c_str());
-						iCount++;
-					}
-				}
-			}
-
-			WriteChatf("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount);
-			DebugSpewAlways("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount);
-
-			fclose(LinkFile);
-		}
-		else
-		{
-			WriteChatf("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
-			DebugSpewAlways("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
-		}
-
-		fclose(File);
-	}
-	else
+	if (err)
 	{
 		WriteChatf("MQ2LinkDB: \arSource file not found (items.txt)");
 		DebugSpewAlways("MQ2LinkDB: \arSource file not found (items.txt)");
+		return;
 	}
+
+	char szLine[MAX_STRING * 2] = { 0 };
+
+	// Get the first line
+	if (fgets(szLine, MAX_STRING * 2, File) == nullptr)
+	{
+		WriteChatf("MQ2LinkDB: \arInvalid items.txt file: failed to read header.");
+		fclose(File);
+		return;
+	}
+
+	szLine[strlen(szLine) - 1] = '\0';
+	std::unique_ptr<SODEQItemConverter> converter = MakeItemConverter(szLine);
+	if (!converter)
+	{
+		WriteChatf("MQ2LinkDB: \arCould not create item converter. The items.txt file is not in the right format.");
+		DebugSpewAlways("MQ2LinkDB: \arCould not create item converter. The items.txt file is not in the right format.");
+		fclose(File);
+		return;
+	}
+
+	FILE* LinkFile = nullptr;
+	if (fopen_s(&LinkFile, szLinkDBFileName, "wt") != 0)
+	{
+		WriteChatf("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
+		DebugSpewAlways("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
+
+		fclose(File);
+		return;
+	}
+
+	// reset this so we read it in next time.
+	presentItemIDs.clear();
+	bKnowTotal = false;
+
+	WriteChatf("MQ2LinkDB: Generating links...");
+	int iCount = 0;
+
+	while (fgets(szLine, MAX_STRING * 2, File) != nullptr)
+	{
+		szLine[strlen(szLine) - 1] = '\0';
+
+		std::string sLink = converter->ConvertToItemLink(szLine);
+
+		if (!sLink.empty())
+		{
+			fprintf(LinkFile, "%s\n", sLink.c_str());
+			iCount++;
+		}
+	}
+
+	WriteChatf("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount);
+	DebugSpewAlways("MQ2LinkDB: Complete! \ay%d\ax links generated", iCount);
+
+	fclose(LinkFile);
+	fclose(File);
 }
