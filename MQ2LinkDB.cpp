@@ -640,6 +640,10 @@ static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool 
 		line = trim(line);
 
 		int iItemID = ItemID(line);
+		if (iItemID == 0)
+		{
+			continue;
+		}
 		presentItemIDs.insert(iItemID);
 
 		if (bNextID)
