@@ -742,7 +742,7 @@ static void CommandLink(SPAWNINFO* pChar, char* szLine_)
 
 	if (line[0] == '/' || line[0] == '-')
 	{
-		ParseParameters(line);
+		iFindItemID = ParseParameters(line);
 		if (!iFindItemID)
 			return;
 	}
