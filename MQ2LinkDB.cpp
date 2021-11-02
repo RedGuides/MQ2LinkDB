@@ -1609,7 +1609,7 @@ public:
 		pItemDef->InstrumentMod = bardvalue;
 		pItemDef->Classes = classes;
 		pItemDef->Races = races;
-		pItemDef->Diety = deity;
+		pItemDef->Deity = deity;
 		pItemDef->Magic = magic;
 		pItemDef->Light = static_cast<uint8_t>(light);
 		pItemDef->Delay = static_cast<uint8_t>(delay);
