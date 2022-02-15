@@ -152,7 +152,7 @@ static int g_iLastResultPosition = 0;
 static bool bQuietMode = true;               // Display debug chatter?
 static int iAddedThisSession = 0;            // How many new links found since startup
 static bool bKnowTotal = false;              // Do we know how many links in db?
-static size_t iMaxResults = 10;                 // Display at most this many results
+static int iMaxResults = 10;                 // Display at most this many results
 static int iFindItemID = 0;                  // Item ID to /link
 static int iVerifyCount;                     // Starting line # to generate 100 links for verification
 static bool bScanChat = true;                // Scan incoming chat for links
@@ -390,14 +390,14 @@ static bool FindLink(std::string_view link)
 		err = fopen_s(&File2, szLinkDBFileName, "r+");
 		if (!err)
 		{
-			fseek(File2, replacePos - strlen(szLine) - 2, SEEK_SET);
+			fseek(File2, (long)(replacePos - strlen(szLine) - 2), SEEK_SET);
 
 			// Double check position - paranoia!
 			char szTemp[10];
 			fread(szTemp, 10, 1, File2);
 			if (memcmp(szTemp, link.data(), 8) == 0)
 			{
-				fseek(File2, replacePos - strlen(szLine) - 2, SEEK_SET); // Seek same place again
+				fseek(File2, (long)(replacePos - strlen(szLine) - 2), SEEK_SET); // Seek same place again
 				fwrite(link.data(), link.length(), 1, File2);
 			}
 			else if (!bQuietMode)
@@ -602,7 +602,7 @@ void ShowItem(std::string_view link)
 		linkData = linkData.substr(0, tagInfo.text.data() - linkData.data());
 
 		char szCommand[MAX_STRING] = { 0 };
-		sprintf_s(szCommand, "/notify ChatWindow CW_ChatOutput link %.*s", linkData.length(), linkData.data());
+		sprintf_s(szCommand, "/notify ChatWindow CW_ChatOutput link %.*s", (int)linkData.length(), linkData.data());
 
 		EzCommand(szCommand);
 	}
@@ -793,8 +793,8 @@ static void CommandLink(SPAWNINFO* pChar, char* szLine_)
 
 	char szTemp3[128] = { 0 };
 	char szTemp[128] = { 0 };
-	sprintf_s(szTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", results.size(), presentItemIDs.size());
-	sprintf_s(szTemp, "Found %d items from database of %d total items", results.size(), presentItemIDs.size());
+	sprintf_s(szTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", (int)results.size(), (int)presentItemIDs.size());
+	sprintf_s(szTemp, "Found %d items from database of %d total items", (int)results.size(), (int)presentItemIDs.size());
 
 	if (results.size() > iMaxResults)
 	{
