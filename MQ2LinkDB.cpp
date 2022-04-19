@@ -1596,7 +1596,7 @@ public:
 		pItemDef->AC = ac;
 		pItemDef->RequiredLevel = reqlevel;
 		pItemDef->RecommendedLevel = reclevel;
-		pItemDef->RecommendedSkill = recskill;
+//		pItemDef->RecommendedSkill = recskill;
 		pItemDef->SkillModType = skillmodtype;
 		pItemDef->SkillModValue = skillmodvalue;
 		pItemDef->SkillModMax = skillmodmax;
@@ -1650,7 +1650,7 @@ public:
 		strcpy_s(pItemDef->CharmFile, charmfile);
 		pItemDef->DmgBonusSkill = extradmgskill;
 		pItemDef->DmgBonusValue = extradmgamt;
-		pItemDef->CharmFileID = charmfileid;
+//		pItemDef->CharmFileID = charmfileid;
 		pItemDef->FoodDuration = foodduration;
 		pItemDef->ContainerType = static_cast<uint8_t>(bagtype);
 		pItemDef->Slots = static_cast<uint8_t>(bagslots);
