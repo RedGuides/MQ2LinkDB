@@ -761,9 +761,9 @@ static void CommandLink(SPAWNINFO* pChar, char* szLine_)
 		});
 
 		// Show list
-		for (size_t i = 0; i < results.size(); ++i)
+		for (int i = 0; i < (int)results.size(); ++i)
 		{
-			bool bShow = i < iMaxResults;
+			bool bShow = i < (int)iMaxResults;
 
 			char szTemp[256] = { 0 };
 			strcpy_s(szTemp, results[i].line.c_str());
@@ -1698,16 +1698,11 @@ public:
 		bool IsEvolvingItem = evoid > 0 && evoid < 10000;
 		if (IsEvolvingItem)
 		{
-			pItem->pEvolutionData = SoeUtil::MakeShared<ItemEvolutionData>();
-			pItem->pEvolutionData->EvolvingMaxLevel = evomax;
-			pItem->pEvolutionData->EvolvingExpPct = 0;
-			pItem->pEvolutionData->EvolvingCurrentLevel = (IsEvolvingItem ? evolvinglevel : 0);
-			pItem->pEvolutionData->GroupID = (IsEvolvingItem ? evoid : (loregroup > 0) ? loregroup & 0xFFFF : 0);
-			pItem->pEvolutionData->LastEquipped = 0;
+			pItem->PopulateItemEvolutionData(evomax, evolvinglevel, evoid, 0, 0.0f);
 		}
 		else
 		{
-			pItem->pEvolutionData.reset();
+			pItem->ResetItemEvolutionData();
 		}
 	}
 };
@@ -1821,9 +1816,13 @@ public:
 
 		ItemDefinition* pItemDef = pItem->GetItemDefinition();
 
+#if IS_CLIENT_DATE(20200413)
 		pItemDef->IDFile2 = idfileextra;
+#endif
+#if HAS_LUCK_STAT
 		pItemDef->MinLuck = minluck;
 		pItemDef->MaxLuck = maxluck;
+#endif
 	}
 };
 
