@@ -152,7 +152,7 @@ static int g_iLastResultPosition = 0;
 static bool bQuietMode = true;               // Display debug chatter?
 static int iAddedThisSession = 0;            // How many new links found since startup
 static bool bKnowTotal = false;              // Do we know how many links in db?
-static int iMaxResults = 10;                 // Display at most this many results
+static unsigned int iMaxResults = 10;        // Display at most this many results
 static int iFindItemID = 0;                  // Item ID to /link
 static int iVerifyCount;                     // Starting line # to generate 100 links for verification
 static bool bScanChat = true;                // Scan incoming chat for links
@@ -761,7 +761,7 @@ static void CommandLink(SPAWNINFO* pChar, char* szLine_)
 		});
 
 		// Show list
-		for (int i = 0; i < (int)results.size(); ++i)
+		for (unsigned int i = 0; i < (int)results.size(); ++i)
 		{
 			bool bShow = i < (int)iMaxResults;
 
