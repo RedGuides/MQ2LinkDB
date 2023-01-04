@@ -292,9 +292,8 @@ static int ItemID(std::string_view link)
 
 void CreateIndex()
 {
-	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
-	if (err) return;
+	FILE* File = _fsopen(szLinkDBFileName, "rt", _SH_DENYNO);
+	if (!File) return;
 
 	char szLine[MAX_STRING] = { 0 };
 	while (fgets(szLine, MAX_STRING, File) != nullptr)
@@ -332,9 +331,8 @@ static bool FindLink(std::string_view link)
 		}
 	}
 
-	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
-	if (err) return false;
+	FILE* File = _fsopen(szLinkDBFileName, "rt", _SH_DENYNO);
+	if (!File) return false;
 
 	// Since we're scanning the file anyway, we'll make the index here to save some time, and to
 	// account for ppl creating new MQ2LinkDB.txt files or whatever.
@@ -386,9 +384,8 @@ static bool FindLink(std::string_view link)
 			WriteChatf("MQ2LinkDB: Replacing auged link with un-auged link for item \ay%d\ax", findLink.itemID);
 		}
 
-		FILE* File2 = nullptr;
-		err = fopen_s(&File2, szLinkDBFileName, "r+");
-		if (!err)
+		FILE* File2 = _fsopen(szLinkDBFileName, "r+", _SH_DENYNO);
+		if (File2)
 		{
 			fseek(File2, (long)(replacePos - strlen(szLine) - 2), SEEK_SET);
 
@@ -423,9 +420,8 @@ static void StoreLink(std::string_view link)
 		CreateIndex();
 	}
 
-	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, szLinkDBFileName, "at");
-	if (err)
+	FILE* File = _fsopen(szLinkDBFileName, "at", _SH_DENYWR);
+	if (!File)
 	{
 		if (!bQuietMode)
 			WriteChatf("MQ2LinkDB: \arERROR - Could not open db file for writing (%d)", errno);
@@ -616,9 +612,8 @@ static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool 
 
 	iNextID = 0; iCurrentID = 0;
 	int iFound = 0, iTotal = 0;
-	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
-	if (err)
+	FILE* File = _fsopen(szLinkDBFileName, "rt", _SH_DENYNO);
+	if (!File)
 	{
 		WriteChatf("MQ2LinkDB: No item database yet");
 		return results;
@@ -685,10 +680,8 @@ int VerifyLinks()
 
 	char szFilename[MAX_PATH];
 	sprintf_s(szFilename, "%s\\links.txt", gPathResources);
-	FILE* File = nullptr;
-
-	errno_t err = fopen_s(&File, szLinkDBFileName, "rt");
-	if (!err)
+	FILE* File = _fsopen(szLinkDBFileName, "rt", _SH_DENYNO);
+	if (File)
 	{
 		//WriteChatf ("MQ2LinkDB: Verifying links.txt...");
 		char szLine[MAX_STRING];
@@ -1846,9 +1839,8 @@ static void ConvertItemsDotTxt()
 
 	char szFilename[MAX_PATH];
 	sprintf_s(szFilename, "%s\\items.txt", gPathResources);
-	FILE* File = nullptr;
-	errno_t err = fopen_s(&File, szFilename, "rt");
-	if (err)
+	FILE* File = _fsopen(szFilename, "rt", _SH_DENYNO);
+	if (!File)
 	{
 		WriteChatf("MQ2LinkDB: \arSource file not found (items.txt)");
 		DebugSpewAlways("MQ2LinkDB: \arSource file not found (items.txt)");
@@ -1875,8 +1867,8 @@ static void ConvertItemsDotTxt()
 		return;
 	}
 
-	FILE* LinkFile = nullptr;
-	if (fopen_s(&LinkFile, szLinkDBFileName, "wt") != 0)
+	FILE* LinkFile = _fsopen(szLinkDBFileName, "wt", _SH_DENYWR);
+	if (!LinkFile)
 	{
 		WriteChatf("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
 		DebugSpewAlways("MQ2LinkDB: \arCould not create link file (MQ2LinkDB.txt) (err: %d)", errno);
