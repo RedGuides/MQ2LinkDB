@@ -124,9 +124,9 @@
 #include <vector>
 
 PreSetup("MQ2LinkDB");
-PLUGIN_VERSION(4.0);
+PLUGIN_VERSION(4.1);
 
-#define MY_STRING "MQ2LinkDB \ar4.0"
+#define MY_STRING "MQ2LinkDB \ar4.1"
 
 struct SearchResult
 {
@@ -158,6 +158,7 @@ static int iVerifyCount;                     // Starting line # to generate 100 
 static bool bScanChat = true;                // Scan incoming chat for links
 static bool bClickLinks = false;             // click on link generated?
 static bool bReadFileInFind = false;         // should we reload the file when looking for new links?
+static bool bSeparateDatabases = false;      // should the database be suffixed with the build (MQ2LinkDB_live.txt)
 
 static std::unordered_set<int> presentItemIDs;
 static bool bPresentItemIDsLoaded = false;
@@ -268,11 +269,20 @@ static void SaveSettings()
 	WritePrivateProfileInt("Settings", "MaxResults", iMaxResults, INIFileName);
 	WritePrivateProfileBool("Settings", "ScanChat", bScanChat, INIFileName);
 	WritePrivateProfileBool("Settings", "ClickLinks", bClickLinks, INIFileName);
+	WritePrivateProfileBool("Settings", "SeparateDatabases", bSeparateDatabases, INIFileName);
 }
 
 static void LoadSettings()
 {
-	sprintf_s(szLinkDBFileName, "%s\\MQ2LinkDB.txt", gPathResources);
+	bSeparateDatabases = GetPrivateProfileBool("Settings", "SeparateDatabases", bSeparateDatabases, INIFileName);
+	if (bSeparateDatabases)
+	{
+		sprintf_s(szLinkDBFileName, "%s\\MQ2LinkDB_%s.txt", gPathResources, GetBuildTargetName(static_cast<BuildTarget>(gBuild)));
+	}
+	else
+	{
+		sprintf_s(szLinkDBFileName, "%s\\MQ2LinkDB.txt", gPathResources);
+	}
 
 	iMaxResults = GetPrivateProfileInt("Settings", "MaxResults", 10, INIFileName);
 	if (iMaxResults < 1) iMaxResults = 1;
@@ -513,6 +523,24 @@ static int ParseParameters(std::string_view paramString)
 			SaveSettings();
 			bAnyParams = true;
 		}
+		else if (ci_equals(param, "/separate"))
+		{
+			GetNextParam( param);
+
+			if (!param.empty())
+			{
+				bSeparateDatabases = GetBoolFromString(param, false);
+			}
+			else
+			{
+				bSeparateDatabases = !bSeparateDatabases;
+			}
+
+			WriteChatf("MQ2LinkDB: Will%ssave to separate databases based on the MQ Build Target (currently: %s).", bSeparateDatabases ? " " : " NOT ", GetBuildTargetName(static_cast<BuildTarget>(gBuild)));
+			SaveSettings();
+			LoadSettings();
+			bAnyParams = true;
+		}
 		else if (ci_equals(param, "/scan"))
 		{
 			GetNextParam(param);
@@ -549,7 +577,7 @@ static int ParseParameters(std::string_view paramString)
 	if (!bAnyParams)
 	{
 		WriteChatf("%s", MY_STRING);
-		WriteChatf("MQ2LinkDB: Syntax: \ay/link [/max #] [/scan on|off] [/click on|off] [/import] [/item #] [/verify #] [search string]\ax");
+		WriteChatf("MQ2LinkDB: Syntax: \ay/link [/max #] [/scan on|off] [/click on|off] [/separate on|off] [/import] [/item #] [/verify #] [search string]\ax");
 
 		if (bKnowTotal)
 		{
