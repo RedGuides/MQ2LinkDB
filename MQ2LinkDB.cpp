@@ -130,11 +130,11 @@ PLUGIN_VERSION(5.0);
 
 #define MY_STRING "MQ2LinkDB \ar5.0"
 
-sqlite3* m_db = nullptr;
-std::thread _importThread;
-std::thread _downloadThread;
-std::atomic<bool> _importThreadDone;
-std::atomic<bool> _downloadThreadDone;
+static sqlite3* s_linkDB = nullptr;
+static std::thread s_importThread;
+static std::thread s_downloadThread;
+static std::atomic<bool> s_importThreadDone;
+static std::atomic<bool> s_downloadThreadDone;
 
 
 // Keep the last 10 results we've done and then cycle through.
@@ -258,41 +258,41 @@ bool dataLinkDB(const char* szIndex, MQTypeVar& Ret)
 
 static void CloseDB()
 {
-	if (m_db)
+	if (s_linkDB)
 	{
-		sqlite3_close(m_db);
-		m_db = nullptr;
+		sqlite3_close(s_linkDB);
+		s_linkDB = nullptr;
 	}
 }
 
 static bool OpenDB()
 {
-	if (m_db)
+	if (s_linkDB)
 	{
 		CloseDB();
 	}
 
-	if (sqlite3_open_v2(szLinkDBFileName, &m_db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL, nullptr) != SQLITE_OK)
+	if (sqlite3_open_v2(szLinkDBFileName, &s_linkDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL, nullptr) != SQLITE_OK)
 	{
-		WriteChatf("\arMQ2LinkDB: Error opening console buffer database: %s", sqlite3_errmsg(m_db));
-		sqlite3_close(m_db);
-		m_db = nullptr;
+		WriteChatf("\arMQ2LinkDB: Error opening console buffer database: %s", sqlite3_errmsg(s_linkDB));
+		sqlite3_close(s_linkDB);
+		s_linkDB = nullptr;
 	}
 	else
 	{
 		char* err_msg = nullptr;
-		if (sqlite3_exec(m_db, SODEQItemConverter315::getSQLCreateStmt().c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
+		if (sqlite3_exec(s_linkDB, SODEQItemConverter315::getSQLCreateStmt().c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 		{
 			WriteChatf("\arMQ2LinkDB: Error creating tables table: %s", err_msg);
 			sqlite3_free(err_msg);
-			sqlite3_close(m_db);
-			m_db = nullptr;
+			sqlite3_close(s_linkDB);
+			s_linkDB = nullptr;
 		}
 	}
 
 	queryLinkCount();
 
-	return m_db != nullptr;
+	return s_linkDB != nullptr;
 }
 
 static void SaveSettings()
@@ -332,9 +332,9 @@ static void queryLinkCount()
 
 	std::string query("SELECT count(item_id) FROM item_links;");
 
-	if (sqlite3_prepare_v2(m_db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
-		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(m_db));
+		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(s_linkDB));
 		return;
 	}
 	else
@@ -354,9 +354,9 @@ static std::vector<std::string> queryLinkByItemID(int itemID)
 	std::vector<std::string> res;
 
 	std::string query("SELECT link FROM item_links WHERE item_id=?;");
-	if (sqlite3_prepare_v2(m_db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
-		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(m_db));
+		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(s_linkDB));
 		return res;
 	}
 	else
@@ -391,7 +391,7 @@ static bool FindLink(std::string_view link)
 	if (!ParseItemLink(link, findLink))
 		return false;
 
-	if (!m_db) return false;
+	if (!s_linkDB) return false;
 
 	std::vector<std::string> links = queryLinkByItemID(findLink.itemID);
 
@@ -435,11 +435,11 @@ static bool FindLink(std::string_view link)
 
 static void StoreLink(std::string_view link)
 {
-	if (!m_db)
+	if (!s_linkDB)
 	{
 		OpenDB();
 
-		if (!m_db)
+		if (!s_linkDB)
 			return;
 	}
 
@@ -448,9 +448,9 @@ static void StoreLink(std::string_view link)
 
 	sqlite3_stmt* stmt;
 	std::string query("INSERT OR REPLACE INTO item_links (item_id, link) VALUES (?, ?);");
-	if (sqlite3_prepare_v2(m_db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
-		WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(m_db));
+		WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(s_linkDB));
 		return;
 	}
 	else
@@ -460,7 +460,7 @@ static void StoreLink(std::string_view link)
 
 		if (sqlite3_step(stmt) != SQLITE_DONE)
 		{
-			WriteChatf("\arMQ2LinkDB: Error inserting into item_link table: %s", sqlite3_errmsg(m_db));
+			WriteChatf("\arMQ2LinkDB: Error inserting into item_link table: %s", sqlite3_errmsg(s_linkDB));
 			return;
 		}
 
@@ -666,9 +666,9 @@ static std::vector<SearchResult> QueryLinkDB(std::string& queryText)
 	std::string query("SELECT links.link FROM item_links AS links, raw_item_data_315 AS items WHERE items.id=links.item_id AND ");
 	query += queryText;
 
-	if (sqlite3_prepare_v2(m_db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
-		WriteChatf("MQ2LinkDB: Error preparing query search by item name: %s", sqlite3_errmsg(m_db));
+		WriteChatf("MQ2LinkDB: Error preparing query search by item name: %s", sqlite3_errmsg(s_linkDB));
 		return results;
 	}
 	else
@@ -723,9 +723,9 @@ static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool 
 	std::string wildCard;
 
 
-	if (sqlite3_prepare_v2(m_db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
-		WriteChatf("MQ2LinkDB: Error preparing query search by item name: %s", sqlite3_errmsg(m_db));
+		WriteChatf("MQ2LinkDB: Error preparing query search by item name: %s", sqlite3_errmsg(s_linkDB));
 		return results;
 	}
 	else
@@ -861,8 +861,8 @@ PLUGIN_API void InitializePlugin()
 	AddCommand("/link", CommandLink);
 	AddMQ2Data("LinkDB", dataLinkDB);
 
-	_importThreadDone = true;
-	_downloadThreadDone = true;
+	s_importThreadDone = true;
+	s_downloadThreadDone = true;
 
 	pLinkType = new MQ2LinkType;
 	LoadSettings();
@@ -875,11 +875,11 @@ PLUGIN_API void ShutdownPlugin()
 	RemoveCommand("/link");
 	RemoveMQ2Data("LinkDB");
 
-	if( _importThread.joinable() )
-		_importThread.join();
+	if( s_importThread.joinable() )
+		s_importThread.join();
 
-	if (_downloadThread.joinable())
-		_downloadThread.join();
+	if (s_downloadThread.joinable())
+		s_downloadThread.join();
 
 
 	CloseDB();
@@ -927,7 +927,7 @@ std::unique_ptr<SODEQItemConverter> MakeItemConverter(const char* szLine)
 
 void ConvertItemsDotTxtWorker()
 {
-	_importThreadDone = false;
+	s_importThreadDone = false;
 
 	WriteChatf("MQ2LinkDB: Importing items.txt...");
 
@@ -965,15 +965,15 @@ void ConvertItemsDotTxtWorker()
 	int iCount = 0;
 	
 	char* err_msg = nullptr;
-	sqlite3_exec(m_db, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err_msg);
+	sqlite3_exec(s_linkDB, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err_msg);
 
 	while (fgets(szLine, MAX_STRING * 2, File) != nullptr)
 	{
 		iCount++;
 		if (converter->LoadItemLine(szLine))
 		{
-			converter->execAddItemToRawDB(m_db);
-			converter->execAddItemToLinkDB(m_db);
+			converter->execAddItemToRawDB(s_linkDB);
+			converter->execAddItemToLinkDB(s_linkDB);
 		}
 		else
 		{
@@ -986,7 +986,7 @@ void ConvertItemsDotTxtWorker()
 		}
 	}
 
-	sqlite3_exec(m_db, "COMMIT;", nullptr, nullptr, &err_msg);
+	sqlite3_exec(s_linkDB, "COMMIT;", nullptr, nullptr, &err_msg);
 
 	WriteChatf("\amMQ2LinkDB: \agComplete! \ay%d\at links generated", iCount);
 	DebugSpewAlways("\amMQ2LinkDB: \agComplete! \ay%d\at links generated", iCount);
@@ -995,21 +995,21 @@ void ConvertItemsDotTxtWorker()
 
 	queryLinkCount();
 
-	_importThreadDone = true;
+	s_importThreadDone = true;
 }
 
 static void ConvertItemsDotTxt()
 {
-	if (!_importThreadDone)
+	if (!s_importThreadDone)
 	{
 		DebugSpewAlways("\amMQ2LinkDB:\ayAn import is already running!");
 	}
 	else
 	{
-		if (_importThread.joinable())
-			_importThread.join();
+		if (s_importThread.joinable())
+			s_importThread.join();
 
-		_importThread = std::thread{ ConvertItemsDotTxtWorker };
+		s_importThread = std::thread{ ConvertItemsDotTxtWorker };
 	}
 }
 
@@ -1041,20 +1041,20 @@ static void DownloadLatestItemsTxtWorker(const std::string& itemsURL)
 
 	ConvertItemsDotTxt();
 
-	_downloadThreadDone = true;
+	s_downloadThreadDone = true;
 }
 
 static void DownloadLatestItemsTxt(const std::string& itemsURL)
 {
-	if (!_downloadThreadDone)
+	if (!s_downloadThreadDone)
 	{
 		DebugSpewAlways("\amMQ2LinkDB:\ayA download is already running!");
 	}
 	else
 	{
-		if (_downloadThread.joinable())
-			_downloadThread.join();
+		if (s_downloadThread.joinable())
+			s_downloadThread.join();
 
-		_downloadThread = std::thread{ DownloadLatestItemsTxtWorker, itemsURL };
+		s_downloadThread = std::thread{ DownloadLatestItemsTxtWorker, itemsURL };
 	}
 }
