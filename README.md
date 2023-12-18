@@ -4,6 +4,11 @@ This plugin allows you to access links for (hopefully) every item. It stores lin
 
 ## Getting Started
 
+### Option 1
+1. Load the plugin
+2. /link /update
+
+### Option 2
 1. Download [items.txt][itemstxt] - [here's][itemstxt] a direct download. (This file is updated daily, you'll want to download it again after new expansions.)
 2. Place items.txt in your MQ2 root folder (AKA the "Release" folder, the one that includes all the plugins).
 3. In-game, load the plugin with `/plugin mq2linkdb load`
