@@ -23,6 +23,7 @@ Incoming chat is scanned for links if specified, and the database is checked for
 `/link search` - Find items containing search string  
 `/link /scan [on|off]` - Turn on and off scanning incoming chat  
 `/link /click [on|off]` - Click on the link generated  
+`/link /query <query>` - Query the raw items table. i.e.: /link /query tradeskills=1 AND lore LIKE '%lbs.%' LIMIT 25
 
 ### TLOs
 
