@@ -583,6 +583,17 @@ static int ParseParameters(std::string_view paramString)
 			ConvertItemsDotTxt();
 			bAnyParams = true;
 		}
+		else if (ci_equals(param, "/import"))
+		{
+			ConvertItemsDotTxt();
+			bAnyParams = true;
+		}
+		else if (ci_equals(param, "/query"))
+		{
+			std::string queryString(params[pos].data());
+			QueryLinkDB(queryString);
+			bAnyParams = true;
+		}
 	}
 
 	if (!bAnyParams)
@@ -636,6 +647,58 @@ void ShowItem(std::string_view link)
 	}
 }
 
+static std::vector<SearchResult> QueryLinkDB(std::string& queryText)
+{
+	std::vector<SearchResult> results;
+	sqlite3_stmt* stmt;
+
+	if (!bQuietMode)
+	{
+		WriteChatf("MQ2LinkDB: Running DB Query '\ay%s\ax'...", queryText.c_str());
+	}
+
+	std::string query("SELECT links.link FROM item_links AS links, raw_item_data_315 AS items WHERE items.id=links.item_id AND ");
+	query += queryText;
+
+	if (sqlite3_prepare_v2(m_db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	{
+		WriteChatf("MQ2LinkDB: Error preparing query search by item name: %s", sqlite3_errmsg(m_db));
+		return results;
+	}
+	else
+	{
+		char cBuffer[MAX_STRING / 4] = { 0 };
+		while (sqlite3_step(stmt) == SQLITE_ROW)
+		{
+			sprintf_s(cBuffer, "%s", reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 0)));
+			std::string_view line{ cBuffer };
+			TextTagInfo info = ExtractLink(line);
+
+			size_t start = info.text.data() - line.data();
+			results.emplace_back(std::string(line), start, info.text.length());
+		}
+
+		sqlite3_finalize(stmt);
+	}
+
+	for (auto& r : results)
+	{
+		char szTemp[256] = { 0 };
+		strcpy_s(szTemp, r.line.c_str());
+
+		ItemLinkInfo linkInfo;
+		if (ParseItemLink(r.line, linkInfo))
+		{
+			if (linkInfo.IsSocketed())
+				strcat_s(szTemp, " (Augmented)");
+		}
+
+		WriteChatf("%s", szTemp);
+	}
+
+	return results;
+}
+
 static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool bExact, int limit)
 {
 	std::vector<SearchResult> results;
@@ -651,7 +714,8 @@ static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool 
 	query += std::to_string(limit);
 	query += ";";
 
-	std::string wildCard = R"-(%rax%)-";
+	std::string wildCard;
+
 
 	if (sqlite3_prepare_v2(m_db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{

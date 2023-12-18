@@ -13,6 +13,7 @@ struct SearchResult
 };
 
 static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool bExact, int limit = -1);
+static std::vector<SearchResult> QueryLinkDB(std::string& queryText);
 static void ConvertItemsDotTxt();
 static void queryLinkCount();
 static void StoreLink(std::string_view link);
