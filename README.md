@@ -19,6 +19,7 @@ Incoming chat is scanned for links if specified, and the database is checked for
 
 `/link` - Display statistics  
 `/link /import` - Import items.txt  
+`/link /update` - Download latest items.txt from RG and then import it.
 `/link /max #` - Set maximum number of results (default 10)  
 `/link search` - Find items containing search string  
 `/link /scan [on|off]` - Turn on and off scanning incoming chat  

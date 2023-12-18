@@ -24,7 +24,10 @@
       <Message>Updating version resource for $(MSBuildProjectName)...</Message>
     </PreBuildEvent>
     <Link>
-      <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Release|x64'">sqlite3.lib</AdditionalDependencies>
+      <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Release|x64'">sqlite3.lib;cpr.lib;libcurl.lib;zlib.lib;Ws2_32.lib;libcrypto.lib;libssl.lib;crypt32.lib</AdditionalDependencies>
+    </Link>
+    <Link>
+      <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">sqlite3.lib;cpr.lib;libcurl-d.lib;zlibd.lib;Ws2_32.lib;libcrypto.lib;libssl.lib;crypt32.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <PropertyGroup Label="Globals">

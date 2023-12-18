@@ -120,6 +120,7 @@
 //
 
 #include <mq/Plugin.h>
+#include <cpr/cpr.h>
 #include "MQ2LinkDB.h"
 #include "sqlite3.h"
 #include "SODEQItemConverters.h"
@@ -130,8 +131,10 @@ PLUGIN_VERSION(5.0);
 #define MY_STRING "MQ2LinkDB \ar5.0"
 
 sqlite3* m_db = nullptr;
-std::thread _workerThread;
-std::atomic<bool> _threadDone;
+std::thread _importThread;
+std::thread _downloadThread;
+std::atomic<bool> _importThreadDone;
+std::atomic<bool> _downloadThreadDone;
 
 
 // Keep the last 10 results we've done and then cycle through.
@@ -583,15 +586,16 @@ static int ParseParameters(std::string_view paramString)
 			ConvertItemsDotTxt();
 			bAnyParams = true;
 		}
-		else if (ci_equals(param, "/import"))
-		{
-			ConvertItemsDotTxt();
-			bAnyParams = true;
-		}
 		else if (ci_equals(param, "/query"))
 		{
 			std::string queryString(params[pos].data());
 			QueryLinkDB(queryString);
+			bAnyParams = true;
+		}
+		else if (ci_equals(param, "/update"))
+		{
+			std::string itemURL("https://www.redguides.com/community/resources/items-txt-used-for-mq2linkdb.1720/download");
+			DownloadLatestItemsTxt(itemURL);
 			bAnyParams = true;
 		}
 	}
@@ -599,7 +603,7 @@ static int ParseParameters(std::string_view paramString)
 	if (!bAnyParams)
 	{
 		WriteChatf("%s", MY_STRING);
-		WriteChatf("MQ2LinkDB: Syntax: \ay/link [/max #] [/scan on|off] [/click on|off] [/separate on|off] [/import] [/item #] [search string]\ax");
+		WriteChatf("MQ2LinkDB: Syntax: \ay/link [/max #] [/scan on|off] [/click on|off] [/separate on|off] [/import] [/item #] [search string] [/query <query>] [/update]\ax");
 
 		WriteChatf("MQ2LinkDB: \ay%d\ax links in database, \ay%d\ax links added this session", linksInDBCount, iAddedThisSession);
 
@@ -626,6 +630,8 @@ static int ParseParameters(std::string_view paramString)
 
 	return searchItemID;
 }
+
+
 
 // This routine will send a link click to EQ to retrieve the item data
 void ShowItem(std::string_view link)
@@ -855,7 +861,8 @@ PLUGIN_API void InitializePlugin()
 	AddCommand("/link", CommandLink);
 	AddMQ2Data("LinkDB", dataLinkDB);
 
-	_threadDone = true;
+	_importThreadDone = true;
+	_downloadThreadDone = true;
 
 	pLinkType = new MQ2LinkType;
 	LoadSettings();
@@ -868,8 +875,12 @@ PLUGIN_API void ShutdownPlugin()
 	RemoveCommand("/link");
 	RemoveMQ2Data("LinkDB");
 
-	if( _workerThread.joinable() )
-		_workerThread.join();
+	if( _importThread.joinable() )
+		_importThread.join();
+
+	if (_downloadThread.joinable())
+		_downloadThread.join();
+
 
 	CloseDB();
 
@@ -916,7 +927,7 @@ std::unique_ptr<SODEQItemConverter> MakeItemConverter(const char* szLine)
 
 void ConvertItemsDotTxtWorker()
 {
-	_threadDone = false;
+	_importThreadDone = false;
 
 	WriteChatf("MQ2LinkDB: Importing items.txt...");
 
@@ -982,22 +993,68 @@ void ConvertItemsDotTxtWorker()
 
 	fclose(File);
 
-	_threadDone = true;
-
 	queryLinkCount();
+
+	_importThreadDone = true;
 }
 
 static void ConvertItemsDotTxt()
 {
-	if (!_threadDone)
+	if (!_importThreadDone)
 	{
 		DebugSpewAlways("\amMQ2LinkDB:\ayAn import is already running!");
 	}
 	else
 	{
-		if (_workerThread.joinable())
-			_workerThread.join();
+		if (_importThread.joinable())
+			_importThread.join();
 
-		_workerThread = std::thread{ ConvertItemsDotTxtWorker };
+		_importThread = std::thread{ ConvertItemsDotTxtWorker };
+	}
+}
+
+static void DownloadLatestItemsTxtWorker(const std::string& itemsURL)
+{
+	WriteChatf("MQ2LinkDB: \ayDownloading latest items.txt from: \am%s", itemsURL.c_str());
+
+	cpr::Response r = cpr::Get(cpr::Url{itemsURL});
+	if (r.status_code == 200)
+	{
+		char szFilename[MAX_PATH];
+		sprintf_s(szFilename, "%s\\items.txt", gPathResources);
+		FILE* pFile = _fsopen(szFilename, "wb", _SH_DENYWR);
+		if (!pFile)
+		{
+			WriteChatf("MQ2LinkDB: \arUnable to write to items.txt");
+			DebugSpewAlways("MQ2LinkDB: \arUnable to write to items.txt");
+			return;
+		}
+		fwrite(r.text.c_str(), sizeof(char), r.text.length(), pFile);
+		fclose(pFile);
+
+		WriteChatf("MQ2LinkDB: \agLatest items.txt downloaded! Running import next.");
+	}
+	else
+	{
+		WriteChatf("Failed to download (%s) with code(%d)", itemsURL.c_str(), r.status_code);
+	}
+
+	ConvertItemsDotTxt();
+
+	_downloadThreadDone = true;
+}
+
+static void DownloadLatestItemsTxt(const std::string& itemsURL)
+{
+	if (!_downloadThreadDone)
+	{
+		DebugSpewAlways("\amMQ2LinkDB:\ayA download is already running!");
+	}
+	else
+	{
+		if (_downloadThread.joinable())
+			_downloadThread.join();
+
+		_downloadThread = std::thread{ DownloadLatestItemsTxtWorker, itemsURL };
 	}
 }
