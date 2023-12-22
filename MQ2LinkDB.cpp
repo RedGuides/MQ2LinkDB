@@ -46,7 +46,6 @@
 //
 //
 // Changes:
-// 5.0  Changed link db from a file to SQLite3 DB - Derple
 // 4.0  Rewritten for mqnext using new item link parsing apis provided by EQLib and
 //      string_view. Now is able to parse multiple links on the same message. Parts of
 //      defunct linkbot removed.
@@ -133,8 +132,8 @@ PLUGIN_VERSION(5.0);
 static sqlite3* s_linkDB = nullptr;
 static std::thread s_importThread;
 static std::thread s_downloadThread;
-static std::atomic<bool> s_importThreadDone;
-static std::atomic<bool> s_downloadThreadDone;
+static std::atomic<bool> s_importThreadDone = true;
+static std::atomic<bool> s_downloadThreadDone = true;
 
 
 // Keep the last 10 results we've done and then cycle through.
@@ -156,62 +155,10 @@ static bool bClickLinks = false;             // click on link generated?
 static bool bReadFileInFind = false;         // should we reload the file when looking for new links?
 static bool bSeparateDatabases = false;      // should the database be suffixed with the build (MQ2LinkDB_live.txt)
 
-static char szLink[MAX_STRING / 4] = { 0 };
-static int iCurrentID = 0;
-static int iNextID = 0;
+static std::string downloadURL; // can be updated in the ini
 
 char szLinkDBFileName[MAX_PATH] = { 0 };
 int linksInDBCount = 0;
-
-class MQ2LinkType : public MQ2Type
-{
-public:
-	enum class LinkMembers
-	{
-		Link = 1,
-		CurrentID,
-		NextID,
-	};
-
-	MQ2LinkType() : MQ2Type("linkdb")
-	{
-		ScopedTypeMember(LinkMembers, Link);
-		ScopedTypeMember(LinkMembers, CurrentID);
-		ScopedTypeMember(LinkMembers, NextID);
-	}
-
-	virtual bool GetMember(MQVarPtr VarPtr, const char* Member, char* Index, MQTypeVar& Dest) override
-	{
-		MQTypeMember* pMember = MQ2LinkType::FindMember(Member);
-		if (!pMember)
-			return false;
-
-		switch (static_cast<LinkMembers>(pMember->ID))
-		{
-		case LinkMembers::Link:
-			strcpy_s(DataTypeTemp, szLink);
-			Dest.Ptr = &DataTypeTemp[0];
-			Dest.Type = datatypes::pStringType;
-			return true;
-		case LinkMembers::CurrentID:
-			Dest.DWord = iCurrentID;
-			Dest.Type = datatypes::pIntType;
-			return true;
-		case LinkMembers::NextID:
-			Dest.DWord = iNextID;
-			Dest.Type = datatypes::pIntType;
-			return true;
-		}
-		return false;
-	}
-
-	bool ToString(MQVarPtr VarPtr, char* Destination) override
-	{
-		strcpy_s(Destination, MAX_STRING, szLink);
-		return true;
-	}
-};
-MQ2LinkType* pLinkType = nullptr;
 
 static int strcnt(const char* buffer, char ch)
 {
@@ -228,9 +175,7 @@ bool dataLinkDB(const char* szIndex, MQTypeVar& Ret)
 {
 	if (!szIndex[0])
 	{
-		Ret.DWord = 0;
-		Ret.Type = pLinkType;
-		return true;
+		return false;
 	}
 
 	iFindItemID = 0;
@@ -274,7 +219,7 @@ static bool OpenDB()
 
 	if (sqlite3_open_v2(szLinkDBFileName, &s_linkDB, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_WAL, nullptr) != SQLITE_OK)
 	{
-		WriteChatf("\arMQ2LinkDB: Error opening console buffer database: %s", sqlite3_errmsg(s_linkDB));
+		WriteChatf("\arMQ2LinkDB: Error opening MQ2LinkDB database: %s", sqlite3_errmsg(s_linkDB));
 		sqlite3_close(s_linkDB);
 		s_linkDB = nullptr;
 	}
@@ -301,6 +246,7 @@ static void SaveSettings()
 	WritePrivateProfileBool("Settings", "ScanChat", bScanChat, INIFileName);
 	WritePrivateProfileBool("Settings", "ClickLinks", bClickLinks, INIFileName);
 	WritePrivateProfileBool("Settings", "SeparateDatabases", bSeparateDatabases, INIFileName);
+	WritePrivateProfileString("Updater", "URL", downloadURL.c_str(), INIFileName);
 }
 
 static void LoadSettings()
@@ -320,11 +266,12 @@ static void LoadSettings()
 
 	bScanChat = GetPrivateProfileBool("Settings", "ScanChat", true, INIFileName);
 	bClickLinks = GetPrivateProfileBool("Settings", "ClickLinks", false, INIFileName);
+	downloadURL = GetPrivateProfileString("Updater", "URL", "https://www.redguides.com/community/resources/items-txt-used-for-mq2linkdb.1720/download", INIFileName);
 
 	OpenDB();
 }
 
-static void queryLinkCount()
+const static void queryLinkCount()
 {
 	sqlite3_stmt* stmt;
 
@@ -347,7 +294,7 @@ static void queryLinkCount()
 	}
 }
 
-static std::vector<std::string> queryLinkByItemID(int itemID)
+const static std::vector<std::string> queryLinkByItemID(int itemID)
 {
 	sqlite3_stmt* stmt;
 
@@ -357,17 +304,14 @@ static std::vector<std::string> queryLinkByItemID(int itemID)
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(s_linkDB));
-		return res;
 	}
 	else
 	{
 		sqlite3_bind_int(stmt, 1, itemID);
 
-		char cBuffer[MAX_STRING / 4] = { 0 };
 		while (sqlite3_step(stmt) == SQLITE_ROW)
 		{
-			sprintf_s(cBuffer, "%s", sqlite3_column_text(stmt, 0));
-			res.push_back(std::string(cBuffer));
+			res.emplace_back(std::string( reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ));
 		}
 
 		sqlite3_finalize(stmt);
@@ -391,11 +335,12 @@ static bool FindLink(std::string_view link)
 	if (!ParseItemLink(link, findLink))
 		return false;
 
-	if (!s_linkDB) return false;
+	if (!s_linkDB) 
+		return false;
 
 	std::vector<std::string> links = queryLinkByItemID(findLink.itemID);
 
-	if( links.size() == 0)
+	if( links.empty() )
 		return false;
 
 	bool replaceAugLink = false;
@@ -403,18 +348,19 @@ static bool FindLink(std::string_view link)
 	for (auto& link : links)
 	{
 		ItemLinkInfo linkInfo;
-		ParseItemLink(link, linkInfo);
-
-		// Try to replace a socketed item with an unsocketed item, if possible.
-		if (linkInfo.IsSocketed() && !findLink.IsSocketed())
+		if (ParseItemLink(link, linkInfo))
 		{
-			replaceAugLink = true;
-		}
-		else
-		{
-			if (!bQuietMode)
+			// Try to replace a socketed item with an unsocketed item, if possible.
+			if (linkInfo.IsSocketed() && !findLink.IsSocketed())
 			{
-				WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", findLink.itemID);
+				replaceAugLink = true;
+			}
+			else
+			{
+				if (!bQuietMode)
+				{
+					WriteChatf("MQ2LinkDB: Saw link \ay%d\ax, but we already have it.", findLink.itemID);
+				}
 			}
 		}
 	}
@@ -433,7 +379,7 @@ static bool FindLink(std::string_view link)
 	return true;
 }
 
-static void StoreLink(std::string_view link)
+const static void StoreLink(std::string_view link)
 {
 	if (!s_linkDB)
 	{
@@ -453,19 +399,18 @@ static void StoreLink(std::string_view link)
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(s_linkDB));
 		return;
 	}
-	else
+
+	sqlite3_bind_int(stmt, 1, iItemID);
+	sqlite3_bind_text(stmt, 2, link.data(), -1, SQLITE_STATIC);
+
+	if (sqlite3_step(stmt) != SQLITE_DONE)
 	{
-		sqlite3_bind_int(stmt, 1, iItemID);
-		sqlite3_bind_blob(stmt, 2, link.data(), (int)link.length(), SQLITE_STATIC);
-
-		if (sqlite3_step(stmt) != SQLITE_DONE)
-		{
-			WriteChatf("\arMQ2LinkDB: Error inserting into item_link table: %s", sqlite3_errmsg(s_linkDB));
-			return;
-		}
-
+		WriteChatf("\arMQ2LinkDB: Error inserting into item_link table: %s", sqlite3_errmsg(s_linkDB));
 		sqlite3_finalize(stmt);
+		return;
 	}
+
+	sqlite3_finalize(stmt);
 
 	if (!bQuietMode)
 	{
@@ -589,13 +534,22 @@ static int ParseParameters(std::string_view paramString)
 		else if (ci_equals(param, "/query"))
 		{
 			std::string queryString(params[pos].data());
-			QueryLinkDB(queryString);
+
+			if (queryString.find(";") != std::string::npos)
+			{
+				WriteChatf("MQ2LinkDB: \arQuery failed.\aw '\am;\aw' is not needed in your query");
+
+			}
+			else
+			{
+				QueryLinkDB(queryString);
+			}
+			
 			bAnyParams = true;
 		}
 		else if (ci_equals(param, "/update"))
 		{
-			std::string itemURL("https://www.redguides.com/community/resources/items-txt-used-for-mq2linkdb.1720/download");
-			DownloadLatestItemsTxt(itemURL);
+			DownloadLatestItemsTxt(downloadURL);
 			bAnyParams = true;
 		}
 	}
@@ -653,7 +607,7 @@ void ShowItem(std::string_view link)
 	}
 }
 
-static std::vector<SearchResult> QueryLinkDB(std::string& queryText)
+static std::vector<SearchResult> QueryLinkDB(const std::string& queryText)
 {
 	std::vector<SearchResult> results;
 	sqlite3_stmt* stmt;
@@ -671,41 +625,35 @@ static std::vector<SearchResult> QueryLinkDB(std::string& queryText)
 		WriteChatf("MQ2LinkDB: Error preparing query search by item name: %s", sqlite3_errmsg(s_linkDB));
 		return results;
 	}
-	else
+
+	while (sqlite3_step(stmt) == SQLITE_ROW)
 	{
-		char cBuffer[MAX_STRING / 4] = { 0 };
-		while (sqlite3_step(stmt) == SQLITE_ROW)
-		{
-			sprintf_s(cBuffer, "%s", reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 0)));
-			std::string_view line{ cBuffer };
-			TextTagInfo info = ExtractLink(line);
+		std::string_view line{ reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) };
+		TextTagInfo info = ExtractLink(line);
 
-			size_t start = info.text.data() - line.data();
-			results.emplace_back(std::string(line), start, info.text.length());
-		}
-
-		sqlite3_finalize(stmt);
+		size_t start = info.text.data() - line.data();
+		results.emplace_back(std::string(line), start, info.text.length());
 	}
+
+	sqlite3_finalize(stmt);
 
 	for (auto& r : results)
 	{
-		char szTemp[256] = { 0 };
-		strcpy_s(szTemp, r.line.c_str());
+		bool bSocketed = false;
 
 		ItemLinkInfo linkInfo;
 		if (ParseItemLink(r.line, linkInfo))
 		{
-			if (linkInfo.IsSocketed())
-				strcat_s(szTemp, " (Augmented)");
+			bSocketed = linkInfo.IsSocketed();
 		}
 
-		WriteChatf("%s", szTemp);
+		WriteChatf("%s%s", r.line.c_str(), bSocketed ? " (Augmented)":"");
 	}
 
 	return results;
 }
 
-static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool bExact, int limit)
+static std::vector<SearchResult> SearchLinkDB(const std::string& searchText, bool bExact, int limit /* = -1 no limit */)
 {
 	std::vector<SearchResult> results;
 	sqlite3_stmt* stmt;
@@ -716,38 +664,28 @@ static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool 
 	}
 
 	std::string query("SELECT links.link FROM item_links AS links, raw_item_data_315 AS items WHERE items.id=links.item_id AND items.name");
-	query += bExact ? "=?  ORDER BY items.name ASC LIMIT " : " LIKE ? ORDER BY items.name ASC LIMIT ";	
-	query += std::to_string(limit);
+	query += bExact ? "=?" : " LIKE ?";	
+	query += " ORDER BY items.name ASC LIMIT ?";
 	query += ";";
-
-	std::string wildCard;
-
 
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query search by item name: %s", sqlite3_errmsg(s_linkDB));
-		return results;
 	}
 	else
 	{
-		if (bExact)
+		std::string searchString(searchText);
+		if (!bExact)
 		{
-			sqlite3_bind_text(stmt, 1, searchText.data(), -1, SQLITE_STATIC);
-		}
-		else
-		{
-			wildCard = "%";
-			wildCard += searchText;
-			wildCard += "%";
-
-			sqlite3_bind_text(stmt, 1, wildCard.c_str(), -1, SQLITE_STATIC);
+			searchString = "%" + searchText + "%";
 		}
 
-		char cBuffer[MAX_STRING / 4] = { 0 };
+		sqlite3_bind_text(stmt, 1, searchString.c_str(), -1, SQLITE_STATIC);
+		sqlite3_bind_int(stmt, 2, limit);
+
 		while ( sqlite3_step(stmt) == SQLITE_ROW )
 		{
-			sprintf_s(cBuffer, "%s", reinterpret_cast<const char*>(sqlite3_column_blob(stmt, 0)));
-			std::string_view line{ cBuffer };
+			std::string_view line{ reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) };
 			TextTagInfo info = ExtractLink(line);
 
 			size_t start = info.text.data() - line.data();
@@ -760,10 +698,10 @@ static std::vector<SearchResult> SearchLinkDB(std::string_view searchText, bool 
 	return results;
 }
 
-static void CommandLink(SPAWNINFO* pChar, char* szLine_)
+static void CommandLink(SPAWNINFO* pChar, const char* szLine_)
 {
 	// We copy because DoParameters will mutate the string.
-	std::string_view line{ szLine_ };
+	std::string line{ szLine_ };
 
 	iFindItemID = 0;
 	bRunNextCommand = true;
@@ -827,8 +765,8 @@ static void CommandLink(SPAWNINFO* pChar, char* szLine_)
 
 	char szTemp3[128] = { 0 };
 	char szTemp[128] = { 0 };
-	sprintf_s(szTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", (int)results.size(), (int)linksInDBCount);
-	sprintf_s(szTemp, "Found %d items from database of %d total items", (int)results.size(), (int)linksInDBCount);
+	sprintf_s(szTemp3, "MQ2LinkDB: Found \ay%d\ax items from database of \ay%d\ax total items", static_cast<int>(results.size()), linksInDBCount);
+	sprintf_s(szTemp, "Found %d items from database of %d total items", static_cast<int>(results.size()), linksInDBCount);
 
 	if (results.size() > iMaxResults)
 	{
@@ -861,10 +799,6 @@ PLUGIN_API void InitializePlugin()
 	AddCommand("/link", CommandLink);
 	AddMQ2Data("LinkDB", dataLinkDB);
 
-	s_importThreadDone = true;
-	s_downloadThreadDone = true;
-
-	pLinkType = new MQ2LinkType;
 	LoadSettings();
 }
 
@@ -875,7 +809,7 @@ PLUGIN_API void ShutdownPlugin()
 	RemoveCommand("/link");
 	RemoveMQ2Data("LinkDB");
 
-	if( s_importThread.joinable() )
+	if(s_importThread.joinable())
 		s_importThread.join();
 
 	if (s_downloadThread.joinable())
@@ -883,8 +817,6 @@ PLUGIN_API void ShutdownPlugin()
 
 
 	CloseDB();
-
-	delete pLinkType;
 }
 
 // This is called every time EQ shows a line of chat with CEverQuest::dsp_chat,
@@ -931,33 +863,29 @@ void ConvertItemsDotTxtWorker()
 
 	WriteChatf("MQ2LinkDB: Importing items.txt...");
 
-	char szFilename[MAX_PATH];
-	sprintf_s(szFilename, "%s\\items.txt", gPathResources);
-	FILE* File = _fsopen(szFilename, "rt", _SH_DENYNO);
-	if (!File)
+	std::string line;
+
+	const std::string filePath = fmt::format("{}\\items.txt", gPathResources);
+	std::ifstream itemsFile(filePath);
+	if (!itemsFile)
 	{
 		WriteChatf("MQ2LinkDB: \arSource file not found (items.txt)");
 		DebugSpewAlways("MQ2LinkDB: \arSource file not found (items.txt)");
 		return;
 	}
 
-	char szLine[MAX_STRING * 2] = { 0 };
-
 	// Get the first line
-	if (fgets(szLine, MAX_STRING * 2, File) == nullptr)
+	if (!std::getline(itemsFile, line))
 	{
 		WriteChatf("MQ2LinkDB: \arInvalid items.txt file: failed to read header.");
-		fclose(File);
 		return;
 	}
 
-	szLine[strlen(szLine) - 1] = '\0';
-	std::unique_ptr<SODEQItemConverter> converter = MakeItemConverter(szLine);
+	std::unique_ptr<SODEQItemConverter> converter = MakeItemConverter(line.c_str());
 	if (!converter)
 	{
 		WriteChatf("MQ2LinkDB: \arCould not create item converter. The items.txt file is not in the right format.");
 		DebugSpewAlways("MQ2LinkDB: \arCould not create item converter. The items.txt file is not in the right format.");
-		fclose(File);
 		return;
 	}
 
@@ -965,35 +893,41 @@ void ConvertItemsDotTxtWorker()
 	int iCount = 0;
 	
 	char* err_msg = nullptr;
-	sqlite3_exec(s_linkDB, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err_msg);
-
-	while (fgets(szLine, MAX_STRING * 2, File) != nullptr)
+	if (sqlite3_exec(s_linkDB, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err_msg) == SQLITE_OK)
 	{
-		iCount++;
-		if (converter->LoadItemLine(szLine))
+		while (std::getline(itemsFile, line))
 		{
-			converter->execAddItemToRawDB(s_linkDB);
-			converter->execAddItemToLinkDB(s_linkDB);
+			iCount++;
+			if (converter->LoadItemLine(line.c_str()))
+			{
+				converter->execAddItemToRawDB(s_linkDB);
+				converter->execAddItemToLinkDB(s_linkDB);
+			}
+			else
+			{
+				WriteChatf("\amMQ2LinkDB: \arFailed to load item on line %d!", iCount);
+			}
+
+			if (iCount % 1000 == 0)
+			{
+				WriteChatf("\amMQ2LinkDB: \atProgress Update: \ay%d\at items converted.", iCount);
+			}
+		}
+
+		if (sqlite3_exec(s_linkDB, "COMMIT;", nullptr, nullptr, &err_msg) == SQLITE_OK)
+		{
+			WriteChatf("\amMQ2LinkDB: \agComplete! \ay%d\at links generated", iCount);
+			DebugSpewAlways("\amMQ2LinkDB: \agComplete! \ay%d\at links generated", iCount);
+
+			queryLinkCount();
 		}
 		else
 		{
-			WriteChatf("\amMQ2LinkDB: \arFailed to load item on line %d!", iCount);
+			WriteChatf("\amMQ2LinkDB: \arFailed! Error: %s", err_msg);
+			DebugSpewAlways("\amMQ2LinkDB: \arFailed! Error: %s", err_msg);
 		}
 
-		if (iCount % 1000 == 0)
-		{
-			WriteChatf("\amMQ2LinkDB: \ay%d\at items converted.", iCount);
-		}
 	}
-
-	sqlite3_exec(s_linkDB, "COMMIT;", nullptr, nullptr, &err_msg);
-
-	WriteChatf("\amMQ2LinkDB: \agComplete! \ay%d\at links generated", iCount);
-	DebugSpewAlways("\amMQ2LinkDB: \agComplete! \ay%d\at links generated", iCount);
-
-	fclose(File);
-
-	queryLinkCount();
 
 	s_importThreadDone = true;
 }
@@ -1020,17 +954,17 @@ static void DownloadLatestItemsTxtWorker(const std::string& itemsURL)
 	cpr::Response r = cpr::Get(cpr::Url{itemsURL});
 	if (r.status_code == 200)
 	{
-		char szFilename[MAX_PATH];
-		sprintf_s(szFilename, "%s\\items.txt", gPathResources);
-		FILE* pFile = _fsopen(szFilename, "wb", _SH_DENYWR);
-		if (!pFile)
+		const std::string filePath = fmt::format("{}\\items.txt", gPathResources);
+		std::ofstream fileStream(filePath, std::ios::binary);
+
+		if (!fileStream)
 		{
 			WriteChatf("MQ2LinkDB: \arUnable to write to items.txt");
 			DebugSpewAlways("MQ2LinkDB: \arUnable to write to items.txt");
 			return;
 		}
-		fwrite(r.text.c_str(), sizeof(char), r.text.length(), pFile);
-		fclose(pFile);
+		
+		fileStream.write(r.text.c_str(), r.text.size());
 
 		WriteChatf("MQ2LinkDB: \agLatest items.txt downloaded! Running import next.");
 	}

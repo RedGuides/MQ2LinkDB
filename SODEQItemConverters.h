@@ -24,7 +24,7 @@ public:
 	{
 	}
 
-	bool LoadItemLine(char* szLine)
+	bool LoadItemLine(const char* szLine)
 	{
 		ReadItemLine(szLine);
 		return IsValid();
@@ -52,9 +52,9 @@ public:
 	}
 
 protected:
-	void ReadItemLine(char* szLine)
+	void ReadItemLine(const char* szLine)
 	{
-		char* ptr = szLine;
+		const char* ptr = szLine;
 		int iField = 0;
 
 		while (*ptr)
@@ -414,6 +414,7 @@ public:
 
 #pragma endregion
 
+// SODEQ converter - 315 columns in the items.txt file.
 class SODEQItemConverter315 : public SODEQItemConverter295
 {
 public:

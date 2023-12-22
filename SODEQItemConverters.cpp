@@ -897,7 +897,7 @@ std::string SODEQItemConverter315::getSQLCreateStmt()
 			loreequippedgroup TEXT
 		);
 		CREATE INDEX IF NOT EXISTS `idx_raw_item_name` ON `raw_item_data_315` (`name` ASC);
-		CREATE TABLE IF NOT EXISTS item_links( item_id INTEGER PRIMARY KEY NOT NULL, link BLOB );)SQL");
+		CREATE TABLE IF NOT EXISTS item_links( item_id INTEGER PRIMARY KEY NOT NULL, link TEXT );)SQL");
 }
 
 bool SODEQItemConverter315::execAddItemToLinkDB(sqlite3* db) const
@@ -915,7 +915,7 @@ bool SODEQItemConverter315::execAddItemToLinkDB(sqlite3* db) const
 		{
 			sqlite3_bind_int(stmt, 1, id);
 			std::string link = GetItemLink();
-			sqlite3_bind_blob(stmt, 2, link.c_str(), (int)link.length(), SQLITE_STATIC);
+			sqlite3_bind_text(stmt, 2, link.c_str(), -1, SQLITE_STATIC);
 
 			if (sqlite3_step(stmt) != SQLITE_DONE)
 			{

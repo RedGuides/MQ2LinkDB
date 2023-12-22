@@ -1,0 +1,4 @@
+curl[schannel]
+cpr
+pe-parse
+sqlite3[math,geopoly,json1]
