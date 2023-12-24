@@ -271,11 +271,9 @@ static void LoadSettings()
 	OpenDB();
 }
 
-const static void queryLinkCount()
+static void queryLinkCount()
 {
 	sqlite3_stmt* stmt;
-
-	std::vector<std::string> res;
 
 	std::string query("SELECT count(item_id) FROM item_links;");
 
@@ -294,7 +292,7 @@ const static void queryLinkCount()
 	}
 }
 
-const static std::vector<std::string> queryLinkByItemID(int itemID)
+static std::vector<std::string> queryLinkByItemID(const int itemID)
 {
 	sqlite3_stmt* stmt;
 
@@ -311,7 +309,7 @@ const static std::vector<std::string> queryLinkByItemID(int itemID)
 
 		while (sqlite3_step(stmt) == SQLITE_ROW)
 		{
-			res.emplace_back(std::string( reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) ));
+			res.emplace_back( reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) );
 		}
 
 		sqlite3_finalize(stmt);
@@ -379,7 +377,7 @@ static bool FindLink(std::string_view link)
 	return true;
 }
 
-const static void StoreLink(std::string_view link)
+static void StoreLink(const std::string_view link)
 {
 	if (!s_linkDB)
 	{
@@ -665,8 +663,7 @@ static std::vector<SearchResult> SearchLinkDB(const std::string& searchText, boo
 
 	std::string query("SELECT links.link FROM item_links AS links, raw_item_data_315 AS items WHERE items.id=links.item_id AND items.name");
 	query += bExact ? "=?" : " LIKE ?";	
-	query += " ORDER BY items.name ASC LIMIT ?";
-	query += ";";
+	query += " ORDER BY items.name ASC LIMIT ?;";
 
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
