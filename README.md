@@ -4,6 +4,11 @@ This plugin allows you to access links for (hopefully) every item. It stores lin
 
 ## Getting Started
 
+### Option 1
+1. Load the plugin
+2. /link /update
+
+### Option 2
 1. Download [items.txt][itemstxt] - [here's][itemstxt] a direct download. (This file is updated daily, you'll want to download it again after new expansions.)
 2. Place items.txt in your MQ2 root folder (AKA the "Release" folder, the one that includes all the plugins).
 3. In-game, load the plugin with `/plugin mq2linkdb load`
@@ -19,10 +24,12 @@ Incoming chat is scanned for links if specified, and the database is checked for
 
 `/link` - Display statistics  
 `/link /import` - Import items.txt  
+`/link /update` - Download latest items.txt from RG and then import it.
 `/link /max #` - Set maximum number of results (default 10)  
 `/link search` - Find items containing search string  
 `/link /scan [on|off]` - Turn on and off scanning incoming chat  
 `/link /click [on|off]` - Click on the link generated  
+`/link /query <query>` - Query the raw items table. i.e.: /link /query tradeskills=1 AND lore LIKE '%lbs.%' LIMIT 25
 
 ### TLOs
 
