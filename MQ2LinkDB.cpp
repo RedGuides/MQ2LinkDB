@@ -1,10 +1,5 @@
 // MQ2LinkDB
 //
-// Version 4.0 - 07 Feb 2014 - Originally by Ziggy,
-//  then updated for DoD, PoR, SS, BS, modifications by SwiftyMUSE
-//  updated for CotF
-//  rewritten for mqnext by brainiac
-//
 // Personal link database
 //
 // Usage: /link               - Display statistics
@@ -43,80 +38,6 @@
 // want to be directly shouting about Baby Joseph Sayer in your backpack.
 // If you do and misspell his name, you will end up shouting about an empty string
 // which isn't recommended.
-//
-//
-// Changes:
-// 4.0  Rewritten for mqnext using new item link parsing apis provided by EQLib and
-//      string_view. Now is able to parse multiple links on the same message. Parts of
-//      defunct linkbot removed.
-// 3.4  Fixed a crash when spell links was parsed (Eqmule Jan 09 2020)
-// 3.3  Updated to not require an item on cursor to do / link / import and to not poof
-//      the item used as the template. (Eqmule Jan 08 2020)
-// 3.2  Updated for new link format for TBL.
-// 3.1  Updated for new link format for TBL.
-// 3.0  Added string safety. (Eqmule 07-22-2016)
-// 2.4  Updated to include new sodeq db dump format as the input based on old
-//      13th-floor database.
-// 2.3  Fixed exact search link clicking. Replaced entire import function to use
-//      a dump from Lucy. 13th-floor is no longer updating their file so it is of no
-//      real use to us anymore. I will keep an updated MQ2LinkDB.txt file on the MQ2
-//      site for everyones use. The file will be updated on a monthly basis, at best.
-// 2.2  Updated for CotF release. Linkbot ability is not working
-// 2.1  Updated to fix charm links.  Added all the new fields as defined on 13-floor and
-//      corrected a long standing issue with an escaped delimiter in the names of 3 items.
-//      You NO LONGER have to remove the left and right hand entries, they are created
-//      as links correctly.
-// 2.0  This version, with linkbot ability, must remain in the VIP forums.
-//      Added linkbot functionality using an authorization list.  Will automatically
-//      click an exact match link.  Added the ability to retrieve a link based on
-//      the item id using /item #.
-//
-//      Linkbot called with tells using the !link command.  It will respond to the
-//      caller with the list of links as if you entered a /link command directly.
-// 1.7  Added simple TLO for accessing links from item names.
-// 1.6  Updated for Broken Seas item format changes. Thanks to ksmith and
-//      Nilwean at EQItems. See
-//      http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=229
-// 1.5  Updated for 12/5 item format changes. Thanks to Nilwean and ksmith
-//      at EQItems. See
-//      http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=215
-// 1.4  Updated for SS expansion. Thanks to ksmith at EQItems. See
-//          http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=202
-// 1.3  Updated for PoR expansion. Thanks to ksmith at EQItems. See
-//          http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=170
-//
-// 1.2  Added ScanChat ini setting to toggle whether to snarf links from
-//          seen chatlines. Defaults to on to simulate current behavior.
-//          Also updated for EQItems fixes to their export which was missing
-//          a field.
-//
-// 1.1  Updated to reflect new link format. Thanks to ksmith and Nilwean
-//          and topside from
-//          http://eqitems.13th-floor.org/phpBB2/viewtopic.php?t=145
-//
-// 1.06 Alpha sorts the list
-//      Makes sure that if an exact match is found, then it's displayed, even
-//      if we've already displayed max results
-//      Only searches the name for the item name, previously searched the
-//      whole link (eg: EB41 would have matched 2 items from their hash key)
-//
-// 1.05 Fixed the really stupid mistake with item bitfield. And found out
-//      a new equation:
-//      Moved items.txt import into plugin (You can still use it external if
-//      you want)
-//
-// 1.04 Added Max item list so we don't get too spammed by results.
-//
-// 1.03 Added some more clues for debugging purposes (do: /link /quiet to show)
-//
-// 1.02 Fixed file locking fudge up. Should now add items to database properly.
-//
-// 1.01 Added item index so we know already which items the DB has to save a
-//      bunch of time with checking when adding new items
-//
-// TODO:
-// Auto update from 13th floor website
-//
 
 #include <mq/Plugin.h>
 #include <cpr/cpr.h>
@@ -149,10 +70,8 @@ static bool bQuietMode = true;               // Display debug chatter?
 static int iAddedThisSession = 0;            // How many new links found since startup
 static unsigned int iMaxResults = 10;        // Display at most this many results
 static int iFindItemID = 0;                  // Item ID to /link
-static int iVerifyCount;                     // Starting line # to generate 100 links for verification
 static bool bScanChat = true;                // Scan incoming chat for links
 static bool bClickLinks = false;             // click on link generated?
-static bool bReadFileInFind = false;         // should we reload the file when looking for new links?
 static bool bSeparateDatabases = false;      // should the database be suffixed with the build (MQ2LinkDB_live.txt)
 
 static std::string downloadURL; // can be updated in the ini
@@ -242,7 +161,7 @@ static bool OpenDB()
 
 static void SaveSettings()
 {
-	WritePrivateProfileInt("Settings", "MaxResults", iMaxResults, INIFileName);
+	WritePrivateProfileInt("Settings", "MaxResults", static_cast<int>(iMaxResults), INIFileName);
 	WritePrivateProfileBool("Settings", "ScanChat", bScanChat, INIFileName);
 	WritePrivateProfileBool("Settings", "ClickLinks", bClickLinks, INIFileName);
 	WritePrivateProfileBool("Settings", "SeparateDatabases", bSeparateDatabases, INIFileName);
@@ -275,7 +194,7 @@ static void queryLinkCount()
 {
 	sqlite3_stmt* stmt;
 
-	std::string query("SELECT count(item_id) FROM item_links;");
+	const std::string query("SELECT count(item_id) FROM item_links;");
 
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
@@ -298,7 +217,7 @@ static std::vector<std::string> queryLinkByItemID(const int itemID)
 
 	std::vector<std::string> res;
 
-	std::string query("SELECT link FROM item_links WHERE item_id=?;");
+	const std::string query("SELECT link FROM item_links WHERE item_id=?;");
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(s_linkDB));
@@ -309,7 +228,7 @@ static std::vector<std::string> queryLinkByItemID(const int itemID)
 
 		while (sqlite3_step(stmt) == SQLITE_ROW)
 		{
-			res.emplace_back( reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)) );
+			res.emplace_back(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
 		}
 
 		sqlite3_finalize(stmt);
@@ -343,10 +262,10 @@ static bool FindLink(std::string_view link)
 
 	bool replaceAugLink = false;
 
-	for (auto& link : links)
+	for (auto& link_check : links)
 	{
 		ItemLinkInfo linkInfo;
-		if (ParseItemLink(link, linkInfo))
+		if (ParseItemLink(link_check, linkInfo))
 		{
 			// Try to replace a socketed item with an unsocketed item, if possible.
 			if (linkInfo.IsSocketed() && !findLink.IsSocketed())
@@ -391,7 +310,7 @@ static void StoreLink(const std::string_view link)
 	iAddedThisSession++;
 
 	sqlite3_stmt* stmt;
-	std::string query("INSERT OR REPLACE INTO item_links (item_id, link) VALUES (?, ?);");
+	const std::string query("INSERT OR REPLACE INTO item_links (item_id, link) VALUES (?, ?);");
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(s_linkDB));
@@ -531,7 +450,7 @@ static int ParseParameters(std::string_view paramString)
 		}
 		else if (ci_equals(param, "/query"))
 		{
-			std::string queryString(params[pos].data());
+			const std::string queryString(params[pos].data());
 
 			if (queryString.find(";") != std::string::npos)
 			{
@@ -542,7 +461,7 @@ static int ParseParameters(std::string_view paramString)
 			{
 				QueryLinkDB(queryString);
 			}
-			
+
 			bAnyParams = true;
 		}
 		else if (ci_equals(param, "/update"))
@@ -730,9 +649,9 @@ static void CommandLink(SPAWNINFO* pChar, const char* szLine_)
 		});
 
 		// Show list
-		for (unsigned int i = 0; i < (int)results.size(); ++i)
+		for (unsigned int i = 0; i < results.size(); ++i)
 		{
-			bool bShow = i < (int)iMaxResults;
+			bool bShow = i < iMaxResults;
 
 			char szTemp[256] = { 0 };
 			strcpy_s(szTemp, results[i].line.c_str());
@@ -888,7 +807,7 @@ void ConvertItemsDotTxtWorker()
 
 	WriteChatf("MQ2LinkDB: Generating links...");
 	int iCount = 0;
-	
+
 	char* err_msg = nullptr;
 	if (sqlite3_exec(s_linkDB, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err_msg) == SQLITE_OK)
 	{
@@ -960,8 +879,8 @@ static void DownloadLatestItemsTxtWorker(const std::string& itemsURL)
 			DebugSpewAlways("MQ2LinkDB: \arUnable to write to items.txt");
 			return;
 		}
-		
-		fileStream.write(r.text.c_str(), r.text.size());
+
+		fileStream.write(r.text.c_str(), static_cast<int>(r.text.size()));
 
 		WriteChatf("MQ2LinkDB: \agLatest items.txt downloaded! Running import next.");
 	}
