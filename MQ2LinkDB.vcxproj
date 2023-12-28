@@ -23,6 +23,12 @@
       <Command>if exist "$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), tools\build_scripts\Plugin_Versioning.ps1))\tools\build_scripts\Plugin_Versioning.ps1" powershell.exe -ExecutionPolicy Bypass -NoProfile -NonInteractive -File "$([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), tools\build_scripts\Plugin_Versioning.ps1))\tools\build_scripts\Plugin_Versioning.ps1" -ProjectName "$(MSBuildProjectName)" -ProjectDirectory "$([MSBuild]::EnsureTrailingSlash('$(MSBuildThisFileDirectory)'))\"</Command>
       <Message>Updating version resource for $(MSBuildProjectName)...</Message>
     </PreBuildEvent>
+    <Link>
+      <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Release|x64'">sqlite3.lib;cpr.lib;libcurl.lib;zlib.lib;Ws2_32.lib;libcrypto.lib;libssl.lib;crypt32.lib</AdditionalDependencies>
+    </Link>
+    <Link>
+      <AdditionalDependencies Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">sqlite3.lib;cpr.lib;libcurl-d.lib;zlibd.lib;Ws2_32.lib;libcrypto.lib;libssl.lib;crypt32.lib</AdditionalDependencies>
+    </Link>
   </ItemDefinitionGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{7205031D-D658-41C0-8100-9B2AF2FD06A0}</ProjectGuid>
@@ -72,11 +78,17 @@
   <PropertyGroup>
     <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TargetName>$(ProjectName)</TargetName>
+  </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="MQ2LinkDB.cpp" />
+    <ClCompile Include="SODEQItemConverters.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="MQ2LinkDB.h" />
     <ClInclude Include="resource.h" />
+    <ClInclude Include="SODEQItemConverters.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="MQ2LinkDB.rc" />
