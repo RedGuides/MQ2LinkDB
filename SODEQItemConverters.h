@@ -54,12 +54,15 @@ public:
 protected:
 	void ReadItemLine(const char* szLine)
 	{
+		if (*szLine == 0)
+			return;
+
 		const char* ptr = szLine;
 		int iField = 0;
+		char szField[256];
 
-		while (*ptr)
+		do
 		{
-			char szField[1024];
 			char* pDest = szField;
 			bool bEscape = false;
 
@@ -72,11 +75,10 @@ protected:
 				//DebugSpew("Escape: %s, cPtr: %c", bEscape?"True":"False", *cPtr);
 			}
 			*pDest = '\0';
-			ptr++;
 
 			//WriteChatf("cField: %s", cField);
 			SetField(iField++, szField);
-		}
+		} while (*ptr++);
 	}
 
 	std::string CreateItemLink() const
