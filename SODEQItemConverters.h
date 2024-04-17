@@ -59,7 +59,7 @@ protected:
 
 		while (*ptr)
 		{
-			char szField[256];
+			char szField[1024];
 			char* pDest = szField;
 			bool bEscape = false;
 
