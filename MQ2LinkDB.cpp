@@ -246,6 +246,15 @@ static int ItemID(std::string_view link)
 	return linkInfo.itemID;
 }
 
+static std::string_view ItemName(std::string_view link)
+{
+	ItemLinkInfo linkInfo;
+	if (!ParseItemLink(link, linkInfo))
+		return "";
+
+	return linkInfo.itemName;
+}
+
 static bool FindLink(std::string_view link)
 {
 	ItemLinkInfo findLink;
@@ -296,6 +305,43 @@ static bool FindLink(std::string_view link)
 	return true;
 }
 
+static void StoreName(const std::string_view link)
+{
+	if (!s_linkDB)
+	{
+		OpenDB();
+
+		if (!s_linkDB)
+			return;
+	}
+
+	int iItemID = ItemID(link);
+	std::string sItemName = std::string(ItemName(link));
+	
+	iAddedThisSession++;
+
+	sqlite3_stmt* stmt;
+	const std::string query("INSERT OR REPLACE INTO raw_item_data_315 (id, name) VALUES (?, ?);");
+	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	{
+		WriteChatf("MQ2LinkDB: Error preparing query for raw_item_data_315 insertion: %s", sqlite3_errmsg(s_linkDB));
+		return;
+	}
+
+	sqlite3_bind_int(stmt, 1, iItemID);
+	sqlite3_bind_text(stmt, 2, sItemName.c_str(), -1, SQLITE_STATIC);
+
+	if (sqlite3_step(stmt) != SQLITE_DONE)
+	{
+		WriteChatf("\arMQ2LinkDB: Error inserting into raw_item_data_315 table: %s", sqlite3_errmsg(s_linkDB));
+		sqlite3_finalize(stmt);
+		return;
+	}
+
+	sqlite3_finalize(stmt);
+
+}
+
 static void StoreLink(const std::string_view link)
 {
 	if (!s_linkDB)
@@ -308,6 +354,13 @@ static void StoreLink(const std::string_view link)
 
 	int iItemID = ItemID(link);
 	iAddedThisSession++;
+	std::string sTrimmedLink = std::string(link);
+
+	size_t secondPos = sTrimmedLink.find('\x12', 1);
+	if (secondPos != std::string::npos)
+	{
+		sTrimmedLink = sTrimmedLink.substr(0, secondPos + 1);
+	}
 
 	sqlite3_stmt* stmt;
 	const std::string query("INSERT OR REPLACE INTO item_links (item_id, link) VALUES (?, ?);");
@@ -318,7 +371,7 @@ static void StoreLink(const std::string_view link)
 	}
 
 	sqlite3_bind_int(stmt, 1, iItemID);
-	sqlite3_bind_text(stmt, 2, link.data(), -1, SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 2, sTrimmedLink.c_str(), -1, SQLITE_STATIC);
 
 	if (sqlite3_step(stmt) != SQLITE_DONE)
 	{
@@ -328,6 +381,7 @@ static void StoreLink(const std::string_view link)
 	}
 
 	sqlite3_finalize(stmt);
+	StoreName(link);
 
 	if (!bQuietMode)
 	{
