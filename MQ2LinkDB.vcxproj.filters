@@ -18,6 +18,9 @@
     <ClCompile Include="SODEQItemConverters.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="MQ2LinkDBTables.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="resource.h">
@@ -27,6 +30,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="MQ2LinkDB.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MQ2LinkDBTables.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -44,6 +44,7 @@
 #include "MQ2LinkDB.h"
 #include "sqlite3.h"
 #include "SODEQItemConverters.h"
+#include "MQ2LinkDBTables.h"
 
 PreSetup("MQ2LinkDB");
 PLUGIN_VERSION(5.0);
@@ -145,7 +146,7 @@ static bool OpenDB()
 	else
 	{
 		char* err_msg = nullptr;
-		if (sqlite3_exec(s_linkDB, SODEQItemConverter315::getSQLCreateStmt().c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
+		if (sqlite3_exec(s_linkDB, MQ2LinkDBTables::getSQLCreateStmt().c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 		{
 			WriteChatf("\arMQ2LinkDB: Error creating tables table: %s", err_msg);
 			sqlite3_free(err_msg);
@@ -156,7 +157,7 @@ static bool OpenDB()
 
 	if (s_linkDB)
 	{
-		SODEQItemConverter315::execUpgradeDB(s_linkDB);
+		MQ2LinkDBTables::execUpgradeDB(s_linkDB);
 	}
 
 	queryLinkCount();
@@ -294,7 +295,6 @@ static bool FindLink(std::string_view link)
 		{
 			WriteChatf("MQ2LinkDB: Replacing auged link with un-auged link for item \ay%d\ax", findLink.itemID);
 		}
-		
 		StoreLink(link);
 	}
 
@@ -312,7 +312,11 @@ static void StoreLink(const std::string_view link)
 	}
 
 	ItemLinkInfo linkInfo;
-	ParseItemLink(link, linkInfo);
+	if (!ParseItemLink(link, linkInfo))
+	{
+		WriteChatf("\arMQ2LinkDB: Failed to parse item link.");
+		return;
+	}
 
 	iAddedThisSession++;
 
@@ -325,10 +329,11 @@ static void StoreLink(const std::string_view link)
 	}
 
 	sqlite3_bind_int(stmt, 1, linkInfo.itemID);
-	sqlite3_bind_text(stmt, 2, link.data(), link.length(), SQLITE_STATIC);
-	sqlite3_bind_text(stmt, 3, linkInfo.itemName.data(), linkInfo.itemName.length(), SQLITE_STATIC);
-
-	if (sqlite3_step(stmt) != SQLITE_DONE)
+	sqlite3_bind_text(stmt, 2, link.data(), static_cast<int>(link.length()), SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 3, linkInfo.itemName.data(), static_cast<int>(linkInfo.itemName.length()), SQLITE_STATIC);
+	
+	int result = sqlite3_step(stmt);
+	if (result != SQLITE_DONE && result != SQLITE_BUSY)
 	{
 		WriteChatf("\arMQ2LinkDB: Error inserting into item_link table: %s", sqlite3_errmsg(s_linkDB));
 		sqlite3_finalize(stmt);
@@ -339,7 +344,7 @@ static void StoreLink(const std::string_view link)
 
 	if (!bQuietMode)
 	{
-		WriteChatf("MQ2LinkDB: Stored link for item ID: \ay%d :: %s\ax %.*s (\ay%d\ax stored this session)", linkInfo.itemID, linkInfo.itemName.data(), link.length(), link.data(), iAddedThisSession);
+		WriteChatf("MQ2LinkDB: Stored link for item ID: \ay%d :: %.*s\ax %.*s (\ay%d\ax stored this session)", linkInfo.itemID, linkInfo.itemName.length(), linkInfo.itemName.data(), link.length(), link.data(), iAddedThisSession);
 	}
 
 	queryLinkCount();
@@ -542,7 +547,7 @@ static std::vector<SearchResult> QueryLinkDB(const std::string& queryText)
 		WriteChatf("MQ2LinkDB: Running DB Query '\ay%s\ax'...", queryText.c_str());
 	}
 
-	std::string query("SELECT links.link FROM item_links AS links, raw_item_data_315 AS items WHERE items.id=links.item_id AND ");
+	std::string query("SELECT links.link FROM item_links AS links, raw_item_data AS items WHERE items.id=links.item_id AND ");
 	query += queryText;
 
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
