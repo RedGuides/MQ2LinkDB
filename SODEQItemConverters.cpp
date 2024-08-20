@@ -897,7 +897,171 @@ std::string SODEQItemConverter315::getSQLCreateStmt()
 			loreequippedgroup TEXT
 		);
 		CREATE INDEX IF NOT EXISTS `idx_raw_item_name` ON `raw_item_data_315` (`name` ASC);
-		CREATE TABLE IF NOT EXISTS item_links( item_id INTEGER PRIMARY KEY NOT NULL, link TEXT );)SQL");
+		CREATE TABLE IF NOT EXISTS item_links( item_id INTEGER PRIMARY KEY NOT NULL, link TEXT );
+		CREATE TABLE IF NOT EXISTS db_metadata( key TEXT, value TEXT, description TEXT );)SQL");
+}
+
+/* This will update the tables if needed. */
+bool SODEQItemConverter315::execUpgradeDB(sqlite3* db)
+{
+	if (db)
+	{
+		int currentVersion = getDBVersion(db);
+
+		switch (currentVersion)
+		{
+		case -1:
+			WriteChatf("MQ2LinkDB: Error determining db schema version.");
+			break;
+		case 0:
+			// upgrade to version 1
+			if (!execUpgradeDBv1(db))
+			{
+				WriteChatf("\arMQ2LinkDB: Error upgrading DB Schema version to 1!");
+				return false;
+			}
+			WriteChatf("\agMQ2LinkDB: Successfully updated DB Schema version to 1!");
+			// fall through to upgrade to the next version...
+		default:
+			return true;
+		}
+	}
+
+	return false;
+}
+
+// upgrade to v1
+bool SODEQItemConverter315::execUpgradeDBv1(sqlite3* db)
+{
+	if (db)
+	{
+		std::map<int, std::string> itemsToFix;
+
+		// add the new column
+		char* err_msg = nullptr;
+		std::string query("ALTER TABLE item_links ADD COLUMN item_name");
+		if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
+		{
+			WriteChatf("MQ2LinkDB: Error preparing query for item_links ALTER TABLE: %s", err_msg);
+			sqlite3_free(err_msg);
+			return false;
+		}
+
+		// add an index on item name
+		query = "CREATE INDEX IF NOT EXISTS `idx_item_links_name` ON `item_links` (`item_name` ASC);";
+		if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
+		{
+			WriteChatf("MQ2LinkDB: Error preparing query for item_links INDEX: %s", err_msg);
+			sqlite3_free(err_msg);
+			return false;
+		}
+
+		sqlite3_exec(db, "UPDATE item_links SET item_name=NULL WHERE item_name='?';", nullptr, nullptr, &err_msg);
+
+		// populate item name into the DB.
+		query = "SELECT item_id, link FROM item_links WHERE item_name IS NULL";
+		sqlite3_stmt* stmt;
+		if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+		{
+			WriteChatf("MQ2LinkDB: Error preparing query search by NULL item name: %s", sqlite3_errmsg(db));
+		}
+		else
+		{
+			while (sqlite3_step(stmt) == SQLITE_ROW)
+			{
+				int item_id{ sqlite3_column_int(stmt, 0) };
+				std::string_view line{ reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)) };
+				TextTagInfo info = ExtractLink(line);
+
+				itemsToFix[item_id] = info.text;
+			}
+
+			sqlite3_finalize(stmt);
+		}
+
+		if (sqlite3_exec(db, "BEGIN TRANSACTION", nullptr, nullptr, &err_msg) != SQLITE_OK)
+		{
+			WriteChatf("MQ2LinkDB: Error preparing query for db_metadata INSERT: %s", err_msg);
+			sqlite3_free(err_msg);
+			return false;
+		}
+
+		for (auto item_iter = itemsToFix.begin(); item_iter != itemsToFix.end(); item_iter++)
+		{
+			sqlite3_stmt* stmt;
+			int item_id = item_iter->first;
+			std::string& item_name = item_iter->second;
+
+			query = "UPDATE item_links SET item_name=? WHERE item_id=?";
+			if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+			{
+				WriteChatf("MQ2LinkDB: Error preparing query for item_link update item_id=%d with item_name='%s': %s", item_id, item_name.c_str(), sqlite3_errmsg(db));
+			}
+			else
+			{
+				sqlite3_bind_text(stmt, 1, item_name.c_str(), -1, SQLITE_STATIC);
+				sqlite3_bind_int(stmt, 2, item_id);
+
+				if (sqlite3_step(stmt) != SQLITE_DONE)
+				{
+					WriteChatf("\arMQ2LinkDB: Error updating item_link item_id=%d with item_name='%s' table: %s", item_id, item_name.c_str(), sqlite3_errmsg(db));
+					return false;
+				}
+
+				sqlite3_finalize(stmt);
+			}
+		}
+
+		if (sqlite3_exec(db, "COMMIT", nullptr, nullptr, &err_msg) != SQLITE_OK)
+		{
+			WriteChatf("MQ2LinkDB: Error preparing query for db_metadata INSERT: %s", err_msg);
+			sqlite3_free(err_msg);
+			return false;
+		}
+
+		// change version to the current version. -- futures functions should UPDATE version instead of insert.
+		query = "INSERT INTO db_metadata(key,value,description) VALUES ('version', '1', 'DB Schema Versioning added, also added item_name to item_links table.');";
+		if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
+		{
+			WriteChatf("MQ2LinkDB: Error preparing query for db_metadata INSERT: %s", err_msg);
+			sqlite3_free(err_msg);
+			return false;
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
+int SODEQItemConverter315::getDBVersion(sqlite3* db)
+{
+	if (db)
+	{
+		sqlite3_stmt* stmt;
+
+		const std::string query("SELECT value FROM db_metadata WHERE key = 'version';");
+
+		if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+		{
+			WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(db));
+			return false;
+		}
+		else
+		{
+			std::string versionStr("0");
+
+			if (sqlite3_step(stmt) == SQLITE_ROW)
+			{
+				versionStr = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+			}
+			sqlite3_finalize(stmt);
+
+			return std::stoi(versionStr);
+		}
+	}
+
+	return -1;
 }
 
 bool SODEQItemConverter315::execAddItemToLinkDB(sqlite3* db) const

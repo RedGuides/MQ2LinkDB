@@ -154,6 +154,11 @@ static bool OpenDB()
 		}
 	}
 
+	if (s_linkDB)
+	{
+		SODEQItemConverter315::execUpgradeDB(s_linkDB);
+	}
+
 	queryLinkCount();
 
 	return s_linkDB != nullptr;
@@ -289,7 +294,7 @@ static bool FindLink(std::string_view link)
 		{
 			WriteChatf("MQ2LinkDB: Replacing auged link with un-auged link for item \ay%d\ax", findLink.itemID);
 		}
-
+		
 		StoreLink(link);
 	}
 
@@ -306,19 +311,22 @@ static void StoreLink(const std::string_view link)
 			return;
 	}
 
-	int iItemID = ItemID(link);
+	ItemLinkInfo linkInfo;
+	ParseItemLink(link, linkInfo);
+
 	iAddedThisSession++;
 
 	sqlite3_stmt* stmt;
-	const std::string query("INSERT OR REPLACE INTO item_links (item_id, link) VALUES (?, ?);");
+	const std::string query("INSERT OR REPLACE INTO item_links (item_id, link, item_name) VALUES (?, ?, ?);");
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(s_linkDB));
 		return;
 	}
 
-	sqlite3_bind_int(stmt, 1, iItemID);
-	sqlite3_bind_text(stmt, 2, link.data(), -1, SQLITE_STATIC);
+	sqlite3_bind_int(stmt, 1, linkInfo.itemID);
+	sqlite3_bind_text(stmt, 2, link.data(), link.length(), SQLITE_STATIC);
+	sqlite3_bind_text(stmt, 3, linkInfo.itemName.data(), linkInfo.itemName.length(), SQLITE_STATIC);
 
 	if (sqlite3_step(stmt) != SQLITE_DONE)
 	{
@@ -331,7 +339,7 @@ static void StoreLink(const std::string_view link)
 
 	if (!bQuietMode)
 	{
-		WriteChatf("MQ2LinkDB: Stored link for item ID: \ay%d\ax %.*s (\ay%d\ax stored this session)", iItemID, link.length(), link.data(), iAddedThisSession);
+		WriteChatf("MQ2LinkDB: Stored link for item ID: \ay%d :: %s\ax %.*s (\ay%d\ax stored this session)", linkInfo.itemID, linkInfo.itemName.data(), link.length(), link.data(), iAddedThisSession);
 	}
 
 	queryLinkCount();
@@ -580,9 +588,9 @@ static std::vector<SearchResult> SearchLinkDB(const std::string& searchText, boo
 		WriteChatf("MQ2LinkDB: Searching for '\ay%.*s\ax'...", searchText.length(), searchText.data());
 	}
 
-	std::string query("SELECT links.link FROM item_links AS links, raw_item_data_315 AS items WHERE items.id=links.item_id AND items.name");
+	std::string query("SELECT links.link FROM item_links AS links WHERE links.item_name");
 	query += bExact ? "=?" : " LIKE ?";	
-	query += " ORDER BY items.name ASC LIMIT ?;";
+	query += " ORDER BY item_name ASC LIMIT ?;";
 
 	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 	{
