@@ -439,9 +439,9 @@ int MQ2LinkDBTables::getDBVersion(sqlite3 * db)
 	{
 		sqlite3_stmt* stmt;
 
-		const std::string query("SELECT value FROM db_metadata WHERE key = 'version';");
+		constexpr auto query = "SELECT value FROM db_metadata WHERE key = 'version';";
 
-		if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+		if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK)
 		{
 			WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(db));
 			return -1;

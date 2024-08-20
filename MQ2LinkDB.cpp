@@ -200,9 +200,9 @@ static void queryLinkCount()
 {
 	sqlite3_stmt* stmt;
 
-	const std::string query("SELECT count(item_id) FROM item_links;");
+	constexpr auto query = "SELECT count(item_id) FROM item_links;";
 
-	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	if (sqlite3_prepare_v2(s_linkDB, query, -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(s_linkDB));
 		return;
@@ -223,8 +223,8 @@ static std::vector<std::string> queryLinkByItemID(const int itemID)
 
 	std::vector<std::string> res;
 
-	const std::string query("SELECT link FROM item_links WHERE item_id=?;");
-	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	constexpr auto query = "SELECT link FROM item_links WHERE item_id=?;";
+	if (sqlite3_prepare_v2(s_linkDB, query, -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(s_linkDB));
 	}
@@ -321,8 +321,8 @@ static void StoreLink(const std::string_view link)
 	iAddedThisSession++;
 
 	sqlite3_stmt* stmt;
-	const std::string query("INSERT OR REPLACE INTO item_links (item_id, link, item_name) VALUES (?, ?, ?);");
-	if (sqlite3_prepare_v2(s_linkDB, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+	constexpr auto query = "INSERT OR REPLACE INTO item_links (item_id, link, item_name) VALUES (?, ?, ?);";
+	if (sqlite3_prepare_v2(s_linkDB, query, -1, &stmt, nullptr) != SQLITE_OK)
 	{
 		WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(s_linkDB));
 		return;

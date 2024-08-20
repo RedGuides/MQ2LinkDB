@@ -558,8 +558,8 @@ bool SODEQItemConverter315::execAddItemToLinkDB(sqlite3* db) const
 	if (db)
 	{
 		sqlite3_stmt* stmt;
-		std::string query("INSERT OR REPLACE INTO item_links (item_id, link, item_name) VALUES (?, ?, ?);");
-		if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
+		constexpr auto query = "INSERT OR REPLACE INTO item_links (item_id, link, item_name) VALUES (?, ?, ?);";
+		if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK)
 		{
 			WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(db));
 			return false;
