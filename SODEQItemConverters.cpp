@@ -558,7 +558,7 @@ bool SODEQItemConverter315::execAddItemToLinkDB(sqlite3* db) const
 	if (db)
 	{
 		sqlite3_stmt* stmt;
-		std::string query("INSERT OR REPLACE INTO item_links (item_id, link) VALUES (?, ?);");
+		std::string query("INSERT OR REPLACE INTO item_links (item_id, link, item_name) VALUES (?, ?, ?);");
 		if (sqlite3_prepare_v2(db, query.c_str(), -1, &stmt, nullptr) != SQLITE_OK)
 		{
 			WriteChatf("MQ2LinkDB: Error preparing query for item_link insertion: %s", sqlite3_errmsg(db));
@@ -569,6 +569,7 @@ bool SODEQItemConverter315::execAddItemToLinkDB(sqlite3* db) const
 			sqlite3_bind_int(stmt, 1, id);
 			std::string link = GetItemLink();
 			sqlite3_bind_text(stmt, 2, link.c_str(), -1, SQLITE_STATIC);
+			sqlite3_bind_text(stmt, 3, m_item->GetName(), -1, SQLITE_STATIC);
 
 			if (sqlite3_step(stmt) != SQLITE_DONE)
 			{
