@@ -364,17 +364,17 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 		switch (currentVersion)
 		{
 		case -1:
-			WriteChatf("MQ2LinkDB: Error determining db schema version.");
+			WriteChatf("\arMQ2LinkDB: Error determining db schema version.");
 			break;
 		case 0:
 			// upgrade to version 1
 			{
 				// add the new column
 				char* err_msg = nullptr;
-				std::string query("ALTER TABLE item_links ADD COLUMN item_name");
+				std::string query("ALTER TABLE item_links ADD COLUMN item_name TEXT");
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
-					WriteChatf("MQ2LinkDB: Error preparing query for item_links ALTER TABLE ADD COLUMN: %s", err_msg);
+					WriteChatf("\ayMQ2LinkDB: Warning preparing query for item_links ALTER TABLE ADD COLUMN: %s", err_msg);
 					sqlite3_free(err_msg);
 					// this is okay. don't bail on failure.
 				}
@@ -382,7 +382,7 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 				query = "ALTER TABLE raw_item_data_315 RENAME TO raw_item_data";
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
-					WriteChatf("MQ2LinkDB: Error preparing query for item_links ALTER TABLE RENAME: %s", err_msg);
+					WriteChatf("\ayMQ2LinkDB: Warning preparing query for item_links ALTER TABLE RENAME: %s", err_msg);
 					sqlite3_free(err_msg);
 					// this is okay. don't bail on failure.
 				}
@@ -391,14 +391,24 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 				query = "CREATE INDEX IF NOT EXISTS `idx_item_links_name` ON `item_links` (`item_name` ASC);";
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
-					WriteChatf("MQ2LinkDB: Error preparing query for item_links INDEX: %s", err_msg);
+					WriteChatf("\arMQ2LinkDB: Error preparing query for item_links INDEX: %s", err_msg);
 					sqlite3_free(err_msg);
 					return false;
 				}
+
+				// due to some bugs in the code some links were inserted incorrectly. this will trim any existing links before populating DB.
+				query = "UPDATE item_links SET link = SUBSTR(link, 1, INSTR(SUBSTR(link, INSTR(link, x'12') + 1), x'12') + INSTR(link, x'12')) WHERE link LIKE '%' || x'12' || '%' || x'12' || '%'";
+				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
+				{
+					WriteChatf("\arMQ2LinkDB: Error trimming links: %s", err_msg);
+					sqlite3_free(err_msg);
+					return false;
+				}
+
 				
 				if (sqlite3_create_function(db, "extract_item_name", 1, SQLITE_UTF8, NULL, &extract_item_name, NULL, NULL) != SQLITE_OK) 
 				{
-					WriteChatf("MQ2LinkDB: Error creating function for item updates: %s", sqlite3_errmsg(db));
+					WriteChatf("\arMQ2LinkDB: Error creating function for item updates: %s", sqlite3_errmsg(db));
 					return false;
 				}
 
@@ -407,7 +417,7 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
-					WriteChatf("MQ2LinkDB: Error updating item_names: %s", err_msg);
+					WriteChatf("\arMQ2LinkDB: Error updating item_names: %s", err_msg);
 					sqlite3_free(err_msg);
 					return false;
 				}
@@ -417,7 +427,7 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 							ON CONFLICT(key) DO UPDATE SET value='1';)";
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
-					WriteChatf("MQ2LinkDB: Error preparing query for db_metadata INSERT: %s", err_msg);
+					WriteChatf("\arMQ2LinkDB: Error preparing query for db_metadata INSERT: %s", err_msg);
 					sqlite3_free(err_msg);
 					return false;
 				}
@@ -443,7 +453,7 @@ int MQ2LinkDBTables::getDBVersion(sqlite3 * db)
 
 		if (sqlite3_prepare_v2(db, query, -1, &stmt, nullptr) != SQLITE_OK)
 		{
-			WriteChatf("MQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(db));
+			WriteChatf("\arMQ2LinkDB: Error preparing query for item_link: %s", sqlite3_errmsg(db));
 			return -1;
 		}
 		else
