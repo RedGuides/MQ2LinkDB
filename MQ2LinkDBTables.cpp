@@ -1,13 +1,14 @@
 #include "MQ2LinkDBTables.h"
 
-static void extract_item_name(sqlite3_context* context, int argc, sqlite3_value** argv)
+static void extract_link_data(sqlite3_context* context, int argc, sqlite3_value** argv)
 {
-	if (argc == 1)
+	if (argc == 2)
 	{
-		const char* value = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+		auto value = reinterpret_cast<const char*>(sqlite3_value_text(argv[0]));
+		auto mode = sqlite3_value_int(argv[1]);
 		TextTagInfo info = ExtractLink(value);
 
-		sqlite3_result_text(context, info.text.data(), static_cast<int>(info.text.length()), SQLITE_STATIC);
+		sqlite3_result_text(context, mode == 1 ? info.text.data() : info.link.data(), static_cast<int>(mode == 1 ? info.text.length(): info.link.length()), SQLITE_STATIC);
 	}
 }
 
@@ -396,24 +397,14 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 					return false;
 				}
 
-				// due to some bugs in the code some links were inserted incorrectly. this will trim any existing links before populating DB.
-				query = "UPDATE item_links SET link = SUBSTR(link, 1, INSTR(SUBSTR(link, INSTR(link, x'12') + 1), x'12') + INSTR(link, x'12')) WHERE link LIKE '%' || x'12' || '%' || x'12' || '%'";
-				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
-				{
-					WriteChatf("\arMQ2LinkDB: Error trimming links: %s", err_msg);
-					sqlite3_free(err_msg);
-					return false;
-				}
-
-				
-				if (sqlite3_create_function(db, "extract_item_name", 1, SQLITE_UTF8, NULL, &extract_item_name, NULL, NULL) != SQLITE_OK) 
+				if (sqlite3_create_function(db, "extract_link_data", 2, SQLITE_UTF8, NULL, &extract_link_data, NULL, NULL) != SQLITE_OK)
 				{
 					WriteChatf("\arMQ2LinkDB: Error creating function for item updates: %s", sqlite3_errmsg(db));
 					return false;
 				}
 
 				// populate item name into the DB.
-				query = "UPDATE item_links SET item_name = extract_item_name(link) WHERE item_name IS NULL";
+				query = "UPDATE item_links SET item_name = extract_link_data(link, 1), link = extract_link_data(link, 2)  WHERE item_name IS NULL";
 
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
