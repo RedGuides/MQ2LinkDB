@@ -389,7 +389,7 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 				}
 
 				// add an index on item name
-				query = "CREATE INDEX IF NOT EXISTS `idx_item_links_name` ON `item_links` (`item_name` ASC);";
+				query = "CREATE INDEX IF NOT EXISTS `idx_item_links_name` ON `item_links` (`item_name` ASC)";
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
 					WriteChatf("\arMQ2LinkDB: Error preparing query for item_links INDEX: %s", err_msg);
@@ -404,7 +404,7 @@ bool MQ2LinkDBTables::execUpgradeDB(sqlite3 * db)
 				}
 
 				// populate item name into the DB.
-				query = "UPDATE item_links SET item_name = extract_link_data(link, 1), link = extract_link_data(link, 2)  WHERE item_name IS NULL";
+				query = "UPDATE item_links SET item_name = extract_link_data(link, 1), link = extract_link_data(link, 2)";
 
 				if (sqlite3_exec(db, query.c_str(), nullptr, nullptr, &err_msg) != SQLITE_OK)
 				{
