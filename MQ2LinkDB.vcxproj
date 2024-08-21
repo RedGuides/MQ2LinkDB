@@ -83,10 +83,12 @@
   </PropertyGroup>
   <ItemGroup>
     <ClCompile Include="MQ2LinkDB.cpp" />
+    <ClCompile Include="MQ2LinkDBTables.cpp" />
     <ClCompile Include="SODEQItemConverters.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="MQ2LinkDB.h" />
+    <ClInclude Include="MQ2LinkDBTables.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="SODEQItemConverters.h" />
   </ItemGroup>

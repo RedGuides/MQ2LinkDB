@@ -46,10 +46,6 @@ public:
 	virtual std::string getSQLInsertRawItemStmt() const = 0;
 	virtual bool execAddItemToRawDB(sqlite3* db) const = 0;
 	virtual bool execAddItemToLinkDB(sqlite3* db) const = 0;
-	static std::string getSQLCreateStmt()
-	{
-		return "";
-	}
 
 protected:
 	void ReadItemLine(const char* szLine)
@@ -406,8 +402,6 @@ public:
 
 	virtual void PopulateItem(ItemPtr pItem) const override;
 
-	static std::string getSQLCreateStmt();
-
 	virtual std::string getSQLInsertRawItemStmt() const override;
 
 	virtual bool execAddItemToLinkDB(sqlite3* db) const override;
@@ -467,8 +461,6 @@ public:
 	virtual void SetField(int iField, const char* cField) override;
 
 	virtual void PopulateItem(ItemPtr pItem) const override;
-
-	static std::string getSQLCreateStmt();
 
 	virtual std::string getSQLInsertRawItemStmt() const override;
 
