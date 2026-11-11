@@ -10,17 +10,14 @@ Datatype providing access to linkdb information.
 
 ## Members
 <!--dt-members-start-->
-### {{ renderMember(type='string', name='Link') }}
+/// member | string Link
+///
 
-:   
+/// member | int CurrentID
+///
 
-### {{ renderMember(type='int', name='CurrentID') }}
-
-:   
-
-### {{ renderMember(type='int', name='NextID') }}
-
-:   
+/// member | int NextID
+///
 
 <!--dt-members-end-->
 

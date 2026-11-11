@@ -10,9 +10,9 @@ Contains a form for searching and displaying links, and a data type
 
 ## Forms
 <!--tlo-forms-start-->
-### {{ renderMember(type='linkdb', name='LinkDB', params='ѕtring') }}
-
-:   Display the link found by name. Use =name for an exact match.
+/// member | linkdb LinkDB[string]
+Display the link found by name. Use =name for an exact match.
+///
 
 <!--tlo-forms-end-->
 
